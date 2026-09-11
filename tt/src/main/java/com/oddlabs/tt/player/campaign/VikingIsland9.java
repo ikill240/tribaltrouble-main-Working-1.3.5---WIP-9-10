@@ -1,0 +1,153 @@
+package com.oddlabs.tt.player.campaign;
+
+import com.oddlabs.net.NetworkSelector;
+import com.oddlabs.tt.form.CampaignDialogForm;
+import com.oddlabs.tt.form.InGameCampaignDialogForm;
+import com.oddlabs.tt.gui.GUIRoot;
+import com.oddlabs.tt.gui.Origin;
+import com.oddlabs.tt.model.DeployType;
+import com.oddlabs.tt.model.Race;
+import com.oddlabs.tt.model.RacesResources;
+import com.oddlabs.tt.model.Unit;
+import com.oddlabs.tt.model.weapon.IronAxeWeapon;
+import com.oddlabs.tt.net.GameNetwork;
+import com.oddlabs.tt.net.PlayerSlot;
+import com.oddlabs.tt.player.Player;
+import com.oddlabs.tt.player.PlayerInfo;
+import com.oddlabs.tt.player.UnitInfo;
+import com.oddlabs.tt.procedural.Landscape;
+import com.oddlabs.tt.trigger.campaign.GameStartedTrigger;
+import com.oddlabs.tt.trigger.campaign.PlayerEleminatedTrigger;
+import com.oddlabs.tt.trigger.campaign.ReinforcementsTrigger;
+import com.oddlabs.tt.trigger.campaign.VictoryTrigger;
+import com.oddlabs.tt.util.Utils;
+import org.jspecify.annotations.NonNull;
+
+import java.util.ResourceBundle;
+import java.util.stream.IntStream;
+
+public final class VikingIsland9 extends Island {
+    private static final ResourceBundle bundle = ResourceBundle.getBundle(VikingIsland9.class.getName());
+
+    private @NonNull String i18n(@NonNull String key, @NonNull Object @NonNull... args) {
+        return Utils.getBundleString(bundle, key, args);
+    }
+
+    public VikingIsland9(@NonNull Campaign campaign) {
+        super(campaign);
+    }
+
+    @Override
+    public void init(@NonNull NetworkSelector network, @NonNull GUIRoot gui_root) {
+        String[] ai_names = IntStream.range(0, 6).mapToObj(i -> i18n("name" + i)).toArray(String[]::new);
+        // gametype, owner, game, meters_per_world, hills, vegetation_amount, supplies_amount, seed, speed, map_code
+        GameNetwork game_network = startNewGame(network, gui_root, 256, Landscape.TerrainType.NATIVE, 1f, .85f, .85f,
+                777777777, 9, VikingCampaign.MAX_UNITS, ai_names);
+        game_network.getClient().getServerInterface().setPlayerSlot(0,
+                PlayerSlot.HUMAN,
+                RacesResources.RACE_VIKINGS,
+                0,
+                true,
+                PlayerSlot.AI_NONE);
+        game_network.getClient().setUnitInfo(0,
+                new UnitInfo(false, false, 0, 0, true,
+                        getCampaign().getState().getNumPeons(),
+                        getCampaign().getState().getNumRockWarriors(),
+                        getCampaign().getState().getNumIronWarriors(),
+                        getCampaign().getState().getNumRubberWarriors()));
+        game_network.getClient().getServerInterface().setPlayerSlot(2,
+                PlayerSlot.AI,
+                RacesResources.RACE_NATIVES,
+                1,
+                true,
+                PlayerSlot.AI_PASSIVE_CAMPAIGN);
+        game_network.getClient().setUnitInfo(2, new UnitInfo(true, true, 0, 0, false, 0, 0, 0, 0));//
+        game_network.getClient().getServerInterface().setPlayerSlot(3,
+                PlayerSlot.AI,
+                RacesResources.RACE_NATIVES,
+                PlayerInfo.TEAM_NEUTRAL,
+                true,
+                PlayerSlot.AI_NEUTRAL_CAMPAIGN);
+        game_network.getClient().setUnitInfo(3, new UnitInfo(false, false, 0, 0, false, 0, 0, 0, 0));//
+        game_network.getClient().getServerInterface().startServer();
+    }
+
+    @Override
+    protected void start() {
+        Runnable runnable;
+        final Player enemy = getViewer().getWorld().getPlayers()[1];
+        final Player chief_tribe = getViewer().getWorld().getPlayers()[2];
+
+        // Introduction
+        runnable = () -> {
+            CampaignDialogForm dialog = new InGameCampaignDialogForm(getViewer(), i18n("header0"),
+                    i18n("dialog0"),
+                    getCampaign().getIcons().getFaces()[0],
+                    Origin.AT_START);
+            addModalForm(dialog);
+        };
+        new GameStartedTrigger(getViewer().getWorld(), runnable);
+
+        // Insert native chieftain
+        chief_tribe.setActiveChieftain(new Unit(chief_tribe, 56 * 2, 110 * 2, null,
+                chief_tribe.getRace().getUnitTemplate(Race.UNIT_CHIEFTAIN)));
+
+        // Defeat if netrauls eleminated
+        runnable = () -> getCampaign().defeated(getViewer(), i18n("game_over"));
+        new PlayerEleminatedTrigger(runnable, chief_tribe);
+
+        // Towers
+        insertGuardTower(enemy, Race.UNIT_WARRIOR_IRON, 50, 85);
+        insertGuardTower(enemy, Race.UNIT_WARRIOR_IRON, 52, 81);
+        insertGuardTower(enemy, Race.UNIT_WARRIOR_IRON, 54, 96);
+        insertGuardTower(enemy, Race.UNIT_WARRIOR_IRON, 61, 104);
+        insertGuardTower(enemy, Race.UNIT_WARRIOR_IRON, 57, 104);
+        insertGuardTower(enemy, Race.UNIT_WARRIOR_IRON, 78, 90);
+        insertGuardTower(enemy, Race.UNIT_WARRIOR_IRON, 72, 88);
+        insertGuardTower(enemy, Race.UNIT_WARRIOR_IRON, 71, 83);
+
+        // Fill native armory with units and weapons
+        int num_extra_units = 130;
+        if (enemy.getArmory().getSupplyContainer(IronAxeWeapon.class).getNumSupplies() < num_extra_units)
+            enemy.getArmory().getSupplyContainer(IronAxeWeapon.class).increaseSupply(num_extra_units);
+        if (enemy.getArmory().getUnitContainer().getNumSupplies() < num_extra_units)
+            enemy.getArmory().getUnitContainer().increaseSupply(num_extra_units);
+
+        // Deploy units now, and reinforcements when needed
+        enemy.deployUnits(enemy.getArmory(), DeployType.IRON_WARRIOR, 20);
+        new ReinforcementsTrigger(enemy, DeployType.IRON_WARRIOR);
+
+        // Winner prize
+        final Runnable prize = () -> {
+            getCampaign().getState().setIslandState(9, CampaignState.ISLAND_COMPLETED);
+            getCampaign().getState().setIslandState(10, CampaignState.ISLAND_AVAILABLE);
+            getCampaign().victory(getViewer());
+        };
+        runnable = () -> {
+            CampaignDialogForm dialog = new InGameCampaignDialogForm(getViewer(), i18n("header1"),
+                    i18n("dialog1"),
+                    getCampaign().getIcons().getFaces()[7],
+                    Origin.AT_END,
+                    prize);
+            addModalForm(dialog);
+        };
+
+        // Winning condition
+        new VictoryTrigger(getViewer(), runnable);
+    }
+
+    @Override
+    public @NonNull CharSequence getHeader() {
+        return i18n("header");
+    }
+
+    @Override
+    public @NonNull CharSequence getDescription() {
+        return i18n("description");
+    }
+
+    @Override
+    public @NonNull CharSequence getCurrentObjective() {
+        return i18n("objective");
+    }
+}

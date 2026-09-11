@@ -1,0 +1,24 @@
+# Database
+DB_CONNECTION=jdbc:mysql://localhost/oddlabs
+DB_USER=matchmaker
+SQL_PASS=
+
+# Discord bot (leave empty to skip Discord bot initialization)
+# Environment variables can be injected using {{ENV_VAR_NAME}} syntax
+DISCORD_BOT_TOKEN=
+DISCORD_SERVER_ID=
+WEBSITE_DOMAIN=tribaltrouble.org
+VIKING_CHIEF_EMOJI=
+NATIVE_CHIEF_EMOJI=
+EMOJI_ROLE_MAPPINGS=
+REACTION_ROLE_MESSAGE_ID=
+
+# Steam API (leave empty to disable)
+# STEAM_APP_ID is comma-separated for multi-app deployments (e.g., main + demo + playtest).
+# The first ID is used as the target for multiplayer stats and achievement pushes.
+STEAM_WEB_API_KEY=
+STEAM_APP_ID=
+STEAM_ONLY_AUTH=false
+
+# Spectator data directory (defaults to /var/games if not set)
+SPECTATOR_DATA_DIR=/var/games

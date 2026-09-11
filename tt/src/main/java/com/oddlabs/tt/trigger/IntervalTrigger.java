@@ -1,0 +1,42 @@
+package com.oddlabs.tt.trigger;
+
+import com.oddlabs.tt.animation.AnimationManager;
+import com.oddlabs.tt.animation.TimerAnimation;
+import com.oddlabs.tt.landscape.World;
+import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
+
+public abstract class IntervalTrigger {
+    private final float after_done_time;
+    private final @NonNull AnimationManager animation_manager;
+    private @Nullable TimerAnimation timer;
+
+    public IntervalTrigger(@NonNull World world, float check_interval, float after_done_time) {
+        this(check_interval, after_done_time, world.getAnimationManagerRealTime());
+    }
+
+    public IntervalTrigger(float check_interval, float after_done_time, @NonNull AnimationManager animation_manager) {
+        this.after_done_time = after_done_time;
+        this.animation_manager = animation_manager;
+        this.timer = new TimerAnimation(animation_manager, _ -> check(), check_interval);
+        timer.start();
+    }
+
+    protected void triggered() {
+        timer.stop();
+        timer = new TimerAnimation(animation_manager, timer -> {
+            timer.stop();
+            done();
+        }, after_done_time);
+        timer.start();
+    }
+
+    protected final void abort() {
+        timer.stop();
+        timer = null;
+    }
+
+    protected abstract void check();
+
+    protected abstract void done();
+}

@@ -1,0 +1,933 @@
+package com.oddlabs.tt.model;
+
+import com.oddlabs.geometry.AnimationInfo;
+import com.oddlabs.tt.audio.AudioParameters;
+import com.oddlabs.tt.audio.AudioPlayer;
+import com.oddlabs.tt.landscape.LandscapeTarget;
+import com.oddlabs.tt.model.behaviour.DefendController;
+import com.oddlabs.tt.model.behaviour.DieBehaviour;
+import com.oddlabs.tt.model.behaviour.DieController;
+import com.oddlabs.tt.model.behaviour.EnterController;
+import com.oddlabs.tt.model.behaviour.GatherController;
+import com.oddlabs.tt.model.behaviour.HuntController;
+import com.oddlabs.tt.model.behaviour.IdleController;
+import com.oddlabs.tt.model.behaviour.MagicController;
+import com.oddlabs.tt.model.behaviour.PlaceBuildingController;
+import com.oddlabs.tt.model.behaviour.RepairController;
+import com.oddlabs.tt.model.behaviour.ShipAttackController;
+import com.oddlabs.tt.model.behaviour.SittingController;
+import com.oddlabs.tt.model.behaviour.StunController;
+import com.oddlabs.tt.model.behaviour.WalkBehaviour;
+import com.oddlabs.tt.model.behaviour.WalkController;
+import com.oddlabs.tt.model.weapon.IronAxeWeapon;
+import com.oddlabs.tt.model.weapon.IronSpearWeapon;
+import com.oddlabs.tt.model.weapon.RockAxeWeapon;
+import com.oddlabs.tt.model.weapon.RockSpearWeapon;
+import com.oddlabs.tt.model.weapon.RubberAxeWeapon;
+import com.oddlabs.tt.model.weapon.RubberSpearWeapon;
+import com.oddlabs.tt.model.weapon.WeaponFactory;
+import com.oddlabs.tt.particle.BalancedParametricEmitter;
+import com.oddlabs.tt.particle.StunFunction;
+import com.oddlabs.tt.pathfinder.Movable;
+import com.oddlabs.tt.pathfinder.Occupant;
+import com.oddlabs.tt.pathfinder.PathTracker;
+import com.oddlabs.tt.pathfinder.UnitGrid;
+import com.oddlabs.tt.player.Player;
+import com.oddlabs.tt.render.SpriteKey;
+import com.oddlabs.tt.util.Target;
+import org.joml.Vector3f;
+import org.joml.Vector4f;
+import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
+import org.lwjgl.opengl.GL11;
+
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+
+public class Unit extends Selectable<UnitTemplate> implements Occupant, Movable {
+
+    private static final float IDLE_SPEED = 1f / 2.5f;
+    private static final float TRANSPORT_SPEED_SCALE = 4f / 5f;
+
+    private static final int PENALTY_INCREMENT = 3;
+    private static final int INITIAL_PATH_PENALTY = 5;
+    private static final float[] MAX_MAGIC_ENERGY = new float[]{40f, 70f, 120f};//{40f, 70f, 90f} //added by ikill240c
+
+    private float courage_time_remaining = 0f;//added by ikill240c
+    private float courage_speed_mult = 1f;//added by ikill240c
+    private float courage_range_bonus = 0f;//added by ikill240c
+    private float courage_attack_speed_mult = 1f;//added by ikill240c
+    private float courage_combat_mult = 1f;//added by ikill240c
+
+    private static final float[] COURAGE_DURATION = new float[]{6f, 9f, 5f}; // indexed by magic_index//added by ikill240c
+    private static final float COURAGE_SPEED_MULT = 2.5f;//added by ikill240c og 1.3
+    private static final float COURAGE_RANGE_BONUS = 5f;//added by ikill240c og 3
+    private static final float COURAGE_ATTACK_SPEED_MULT = 2.5f;//added by ikill240c og 1.23
+    private static final float COURAGE_COMBAT_MULT = 1.75f;//added by ikill240c og 1.15
+
+    private float stuck_check_x = Float.NaN;//added by ikill240c
+    private float stuck_check_y = Float.NaN;//added by ikill240c
+    private float stuck_time = 0f;//added by ikill240c
+
+    private static final float GATHER_STUCK_DIST_SQ = 4f;//added by ikill240c
+    private static final float GATHER_STUCK_SECONDS = 3f;//added by ikill240c
+
+    public class Animation {
+        public static final int IDLING = 0;
+        public static final int MOVING = 1;
+        public static final int THROWING = 2;
+        public static final int DYING = 3;
+        public static final int MAGIC = 4;
+        public static final int THOR = 5;
+        public static final int SITTING = 4;
+        public static final int STEERING = 5;
+        public static final int ROWING_RIGHT = 6;
+        public static final int ROWING_LEFT = 7;
+    }
+
+    public static final int SPEAR_RELEASE_FRAME = 29;
+
+    private final @Nullable UnitSupplyContainer supply_container;
+    private final @Nullable String name;
+    private final @NonNull PathTracker path_tracker;
+    private final float[] magic_energy = new float[MAX_MAGIC_ENERGY.length];//added by ikill240c
+    private int last_magic_index = -1;
+
+    private @Nullable BalancedParametricEmitter stun_marker;
+    private int hit_points;
+    private float time_since_damage = 0f;//added by ikill240c
+    private @NonNull int animation = Animation.IDLING;
+    private float anim_speed;
+    private float anim_time;
+    private int path_penalty;
+    private boolean imaginary;
+    /**
+     * unit is in a tower
+     */
+    private boolean mounted;
+    private boolean on_ship = false;
+    private float mount_offset = 0;
+    private Building mounted_building;
+    private float range_bonus;
+
+    public Unit(@NonNull Player owner, float x, float y, @Nullable Target rally_point,
+            @NonNull UnitTemplate unit_template) {
+        this(owner, x, y, rally_point, unit_template, null);
+    }
+
+    public Unit(@NonNull Player owner, float x, float y, @Nullable Target rally_point,
+            @NonNull UnitTemplate unit_template, @Nullable String name) {
+        this(owner, x, y, rally_point, unit_template, name, true);
+    }
+
+    public Unit(@NonNull Player owner, float x, float y, @Nullable Target rally_point,
+            @NonNull UnitTemplate unit_template, @Nullable String name, boolean notify_by_chieftain) {
+        this(owner, x, y, rally_point, unit_template, name, notify_by_chieftain, false);
+    }
+
+    public Unit(@NonNull Player owner, float x, float y, @Nullable Target rally_point,
+            @NonNull UnitTemplate unit_template, @Nullable String name, boolean notify_by_chieftain,
+            boolean grid_targets_only) {
+        this(owner, x, y, rally_point, unit_template, name, notify_by_chieftain, grid_targets_only, false);
+    }
+
+    public Unit(@NonNull Player owner, float x, float y, @Nullable Target rally_point,
+            @NonNull UnitTemplate unit_template, @Nullable String name, boolean notify_by_chieftain,
+            boolean grid_targets_only, boolean imaginary) {
+        super(owner, unit_template);
+        this.name = name;
+        this.imaginary = imaginary;
+        getAbilities().addAbilities(unit_template.getAbilities());
+        register();
+        hit_points = unit_template.getMaxHitPoints();
+        this.path_tracker = new PathTracker(getUnitGrid(), this);
+        UnitSupplyContainerFactory factory = unit_template.getUnitSupplyContainerFactory();
+        supply_container = factory != null ? (UnitSupplyContainer) factory.createContainer(this) : null;
+
+        if (!imaginary) {
+            findInitialPosition(x, y, grid_targets_only);
+        }
+
+        pushController(new IdleController(this, new AttackScanFilter(getOwner(), AttackScanFilter.UNIT_RANGE), true));
+        if (!getAbilities().hasAbilities(Abilities.MAGIC) && !imaginary) {
+            int result = getOwner().getUnitCountContainer().increaseSupply(1);
+            assert (result == 1) : "No room for new unit in player unit container.";
+        } else if (notify_by_chieftain) {
+            owner.getWorld().getNotificationListener().newSelectableNotification(this);
+        }
+        if (rally_point != null) {
+            Target unit_target;
+            if (rally_point instanceof LandscapeTarget) {
+                UnitGrid grid = getUnitGrid();
+                List<Target> temp_occupants = new ArrayList<>();
+                for (var s : getOwner().getUnits().getSet()) {
+                    if (s.getCurrentController() instanceof WalkController) {
+                        Target target = ((WalkController) s.getCurrentController()).getTarget();
+                        if (!grid.isGridOccupied(target.getGridX(), target.getGridY())) {
+                            grid.occupyGrid(target.getGridX(), target.getGridY(), this);
+                            temp_occupants.add(target);
+                        }
+                    }
+                }
+                unit_target = grid.findGridTargets(rally_point.getGridX(), rally_point.getGridY(), 1, true)[0];
+                for (Target target : temp_occupants) {
+                    grid.freeGrid(target.getGridX(), target.getGridY(), this);
+                }
+            } else
+                unit_target = rally_point;
+
+            boolean aggressive = unit_template.getAbilities().hasAbilities(Abilities.THROW);
+            setTarget(unit_target, Action.DEFAULT, aggressive);
+        }
+    }
+
+    @Override
+    protected @NonNull Unit self() {
+        return this;
+    }
+
+    @Override
+    protected final float getZError() {
+        if (on_ship) {
+            return 0.0f;
+        } else {
+            return getLandscapeError();
+        }
+    }
+
+    @Override
+    public final void visit(@NonNull ElementVisitor visitor) {
+        visitor.visitUnit(this);
+    }
+
+    public final @Nullable UnitSupplyContainer getSupplyContainer() {
+        return supply_container;
+    }
+
+    @Override
+    public final String toString() {
+        if (!isDead())
+            return "Unit: " + hashCode() + " | getOwner() = " + getOwner() + " | mounted = " + mounted + " | getGridX() = " + getGridX() + " | getGridY() = " + getGridY();
+        else
+            return super.toString();
+    }
+
+    private void updateGatherStuckCheck(float t) {//added by ikill240c
+        if (!(isMoving() && getPrimaryController() instanceof GatherController<?> gc)) {
+            stuck_time = 0f;
+            stuck_check_x = Float.NaN;
+            return;
+        }
+        float x = getPositionX();
+        float y = getPositionY();
+        if (Float.isNaN(stuck_check_x)) {
+            stuck_check_x = x;
+            stuck_check_y = y;
+            return;
+        }
+        float dx = x - stuck_check_x;
+        float dy = y - stuck_check_y;
+        if (dx * dx + dy * dy < GATHER_STUCK_DIST_SQ) {
+            stuck_time += t;
+            if (stuck_time > GATHER_STUCK_SECONDS) {
+                gc.onStuck();
+                stuck_time = 0f;
+                stuck_check_x = x;
+                stuck_check_y = y;
+            }
+        } else {
+            stuck_check_x = x;
+            stuck_check_y = y;
+            stuck_time = 0f;
+        }
+    }
+
+    private void findInitialPosition(float x, float y, boolean grid_targets_only) {
+        UnitGrid unit_grid = getUnitGrid();
+        Target reserved_target = unit_grid.findGridTargets(UnitGrid.toGridCoordinate(x), UnitGrid.toGridCoordinate(y),
+                1, grid_targets_only)[0];
+        setGridPosition(reserved_target.getGridX(), reserved_target.getGridY());
+        setPosition(reserved_target.getPositionX(), reserved_target.getPositionY());
+
+        // Orient initially towards world center
+        float center = getOwner().getWorld().getHeightMap().getMetersPerWorld() / 2f;
+        float dx = center - reserved_target.getPositionX();
+        float dy = center - reserved_target.getPositionY();
+        float len = (float) Math.sqrt(dx * dx + dy * dy);
+        if (len > 0) {
+            setDirection(dx / len, dy / len);
+        }
+
+        occupy();
+        reinsert();
+    }
+
+    @Override
+    public final int getStatusValue() {
+        int tower_factor = 1;
+        if (mounted)
+            tower_factor = 3;
+        return getTemplate().getStatusValue() * tower_factor;
+    }
+
+    public final void increaseRange(float amount) {
+        assert !isDead();
+        range_bonus += amount;
+    }
+
+    @Override
+    public final AttackScanFilter.@NonNull Priority getAttackPriority() {
+        assert !isDead();
+        return getAbilities().hasAbilities(
+                Abilities.BUILD) ? AttackScanFilter.Priority.PEON : AttackScanFilter.Priority.WARRIOR;
+    }
+
+    @Override
+    public final void visit(@NonNull ToolTipVisitor visitor) {
+        visitor.visitUnit(this);
+    }
+
+    public final @Nullable String getName() {
+        return name;
+    }
+
+    public final int getHitPoints() {
+        return hit_points;
+    }
+
+    public final float getCourageAttackSpeedMultiplier() {//added by ikill240c
+        return courage_attack_speed_mult;
+    }
+
+    public final float getCourageCombatMultiplier() {//added by ikill240c
+        return courage_combat_mult;
+    }
+
+    public final void applyCourageBuff(float duration, float speed_mult, float extra_range, float attack_speed_mult,
+            float combat_mult) {//added by ikill240c
+        if (isDead())
+            return;
+        range_bonus -= courage_range_bonus; // clear any previous courage range bonus before reapplying
+        courage_range_bonus = extra_range;
+        range_bonus += courage_range_bonus;
+        courage_time_remaining = duration;
+        courage_speed_mult = speed_mult;
+        courage_attack_speed_mult = attack_speed_mult;
+        courage_combat_mult = combat_mult;
+    }
+
+    public final float getTimeSinceDamage() {//added by ikill240c
+        return time_since_damage;
+    }
+
+    public final void heal(int amount) {//added by ikill240c
+        if (isDead())
+            return;
+        hit_points = Math.min(hit_points + amount, getTemplate().getMaxHitPoints());
+    }
+
+    public final void drown() {
+        clearOrderQueue(); //added by ikill240c 2026-09-10 16:45
+        clearControllerStack();
+        setReference(null);
+        mounted = false;
+        on_ship = false;
+        mount_offset = 0;
+        if (!imaginary) {
+            enable();
+        }
+        if (supply_container != null) {
+            supply_container.resetSupply(LeftPaddle.class);
+            supply_container.resetSupply(RightPaddle.class);
+        }
+        mounted_building = null;
+        startDying();
+    }
+
+    public final void unmount() {
+        assert !isDead();
+        clearControllerStack();
+        swapController(new IdleController(this, new AttackScanFilter(getOwner(), AttackScanFilter.UNIT_RANGE), true));
+        mounted = false;
+        on_ship = false;
+        mount_offset = 0;
+        enable();
+        Building entrance = mounted_building.getEntrance();
+        findInitialPosition(entrance.getPositionX(), entrance.getPositionY(), true);
+        if (supply_container != null) {
+            supply_container.resetSupply(LeftPaddle.class);
+            supply_container.resetSupply(RightPaddle.class);
+        }
+        mounted_building = null;
+    }
+
+    public final void mount(@NonNull Building building) {
+        assert !isDead();
+        mounted_building = building;
+        mount_offset = building.getTemplate().getMountOffset();
+        if (!imaginary) {
+            disable();
+            free();
+        }
+        setPosition(building.getPositionX(), building.getPositionY());
+        mounted = true;
+        clearOrderQueue(); //added by ikill240c 2026-09-10 16:45
+        clearControllerStack();
+        swapController(new IdleController(this, new AttackScanFilter(getOwner(), AttackScanFilter.TOWER_RANGE), false));
+    }
+
+    public final void mount(Ship ship, ShipAllocation ship_allocation) {
+        assert !isDead();
+        mounted_building = ship;
+        mount_offset = ship_allocation.getOffset().z;
+        if (!imaginary) {
+            disable();
+            free();
+        }
+        mounted = true;
+        on_ship = true;
+        setReference(ship);
+        clearOrderQueue(); //added by ikill240c 2026-09-10 16:45
+        clearControllerStack();
+        switch (ship_allocation.getRole()) {
+            case ShipAllocation.FIGHTING:
+                swapController(
+                        new ShipAttackController(
+                                this,
+                                ship,
+                                new AttackScanFilter(
+                                        getOwner(), AttackScanFilter.TOWER_RANGE + 10),
+                                ship_allocation));
+                break;
+            default:
+                swapController(new SittingController(this, ship, ship_allocation));
+                break;
+        }
+    }
+
+    public final boolean isMounted() {
+        return mounted;
+    }
+
+    // Sends an existing (already deployed) unit back to work gathering a resource. Deployed
+    // harvesters get a GatherController at creation time in LandBuilding.createHarvesters, but a
+    // peon that has been interrupted - drafted into a defense group, finished a construction site,
+    // or whose supply node ran out - drops back to IdleController and previously had no way back
+    // into the economy, so the AI's workforce slowly drained into idle units.
+    // //added by ikill240c 2026-09-10 15:10
+    public final <S extends Supply> void initGather(@NonNull Class<S> supply_type, @Nullable Building drop_off) {
+        assert !isDead();
+        if (mounted)
+            return;
+        clearOrderQueue(); //added by ikill240c 2026-09-10 16:45
+        clearControllerStack();
+        if (drop_off != null && !drop_off.isDead())
+            pushController(new GatherController<>(this, null, supply_type, drop_off));
+        else
+            pushController(new GatherController<>(this, null, supply_type));
+    }
+
+    @Override
+    public final boolean isEnabled() {
+        return !isDead() && !mounted;
+    }
+
+    public final float getMetersPerSecond() {//added by ikill240c
+        assert !isDead();
+        float base;
+        if (getAbilities().hasAbilities(Abilities.HARVEST) && supply_container.getNumSupplies() > 0)
+            base = TRANSPORT_SPEED_SCALE * getTemplate().getMetersPerSecond();
+        else
+            base = getTemplate().getMetersPerSecond();
+        return base * courage_speed_mult;
+    }
+
+    public final void aimAtTarget(@NonNull Target target) {
+        assert !isDead();
+        float dx = target.getPositionX() - getPositionX();
+        float dy = target.getPositionY() - getPositionY();
+        float dir_len_inv = 1f / (float) Math.sqrt(dx * dx + dy * dy);
+        dx *= dir_len_inv;
+        dy *= dir_len_inv;
+        setDirection(dx, dy);
+    }
+
+    public final void switchToIdleAnimation() {
+        assert !isDead();
+        switchAnimation(IDLE_SPEED, Animation.IDLING);
+    }
+
+    public final void switchToSittingAnimation() {
+        assert !isDead();
+        switchAnimation(IDLE_SPEED, Animation.SITTING);
+    }
+
+    public final void switchToSteeringAnimation() {
+        assert !isDead();
+        switchAnimation(IDLE_SPEED, Animation.STEERING);
+    }
+
+    public final void switchToRowingRightAnimation() {
+        assert !isDead();
+        assert supply_container != null;
+        switchAnimation(IDLE_SPEED, Animation.ROWING_RIGHT);
+        supply_container.increaseSupply(1, RightPaddle.class);
+    }
+
+    public final void switchToRowingLeftAnimation() {
+        assert !isDead();
+        assert supply_container != null;
+        switchAnimation(IDLE_SPEED, Animation.ROWING_LEFT);
+        supply_container.increaseSupply(1, LeftPaddle.class);
+    }
+
+    public final @NonNull WeaponFactory getWeaponFactory() {
+        assert !isDead();
+        return getTemplate().getWeaponFactory();
+    }
+
+    public final float getRange(@NonNull Target target) {
+        assert !isDead();
+        return getWeaponFactory().getRange() + range_bonus + target.getSize();
+    }
+
+    @Override
+    public final float getSize() {
+        return 1.9f;
+    }
+
+    @Override
+    public final @NonNull SpriteKey getSpriteRenderer() {
+        return getTemplate().getSpriteRenderer();
+    }
+
+    @Override
+    public final void doAnimate(float t) {//added by ikill240c
+        time_since_damage += t;
+        updateGatherStuckCheck(t); // was defined but never called - this actually runs the universal stuck-gatherer reroute now //added by ikill240c 2026-09-08 03:20
+        anim_time += anim_speed * t;
+        if (isDead() || mounted)
+            reinsert();
+        getOwner().getWorld().updateGlobalChecksum(animation);
+
+        if (getAbilities().hasAbilities(Abilities.MAGIC)) {
+            for (int i = 0; i < magic_energy.length; i++) {
+                increaseMagicEnergy(i, t);
+            }
+        }
+
+        if (courage_time_remaining > 0f) {
+            courage_time_remaining -= t;
+            if (courage_time_remaining <= 0f) {
+                range_bonus -= courage_range_bonus;
+                courage_range_bonus = 0f;
+                courage_speed_mult = 1f;
+                courage_attack_speed_mult = 1f;
+                courage_combat_mult = 1f;
+                courage_time_remaining = 0f;
+            }
+        }
+    }
+
+    public final void increaseMagicEnergy(int index, float amount) {
+        magic_energy[index] += amount;
+        if (magic_energy[index] > MAX_MAGIC_ENERGY[index]) {
+            magic_energy[index] = MAX_MAGIC_ENERGY[index];
+        }
+    }
+
+    @Override
+    public final @NonNull PathTracker getTracker() {
+        assert !isDead();
+        return path_tracker;
+    }
+
+    @Override
+    public final void markBlocking() {
+        assert !isDead();
+        path_penalty = Math.min(path_penalty + PENALTY_INCREMENT, STATIC - 1); // never gets STATIC
+    }
+
+    @Override
+    public final int getPenalty() {
+        assert !isDead();
+        return isBlocking() ? Occupant.STATIC : path_penalty;
+    }
+
+    @Override
+    protected final void removeDying() {
+        if (getAbilities().hasAbilities(Abilities.MAGIC)) {
+            getOwner().setActiveChieftain(null);
+        }
+        if (!imaginary) {
+            free();
+            if (!getAbilities().hasAbilities(Abilities.MAGIC)) {
+                int result = getOwner().getUnitCountContainer().increaseSupply(-1);
+                assert result == -1;
+            }
+        }
+        if (stun_marker != null) {
+            stun_marker.done();
+            stun_marker = null;
+        }
+        super.removeDying();
+    }
+
+    public final void removeNow() {
+        assert !isDead();
+        removeDying();
+        remove();
+    }
+
+    @Override
+    public final void free() {
+        assert !isDead();
+        UnitGrid unit_grid = getUnitGrid();
+        if (unit_grid.getOccupant(getGridX(), getGridY()) == this) {
+            unit_grid.freeGrid(getGridX(), getGridY(), this);
+        }
+        path_penalty = INITIAL_PATH_PENALTY;
+    }
+
+    @Override
+    public final void occupy() {
+        assert !isDead();
+        UnitGrid unit_grid = getUnitGrid();
+        unit_grid.occupyGrid(getGridX(), getGridY(), this);
+
+        // stats
+        getOwner().unitMoved();
+    }
+
+    @Override
+    public final boolean isMoving() {
+        return getCurrentBehaviour() instanceof WalkBehaviour;
+    }
+
+    /*	public final void moveNextAnimate() {
+    	WalkBehaviour behaviour = (WalkBehaviour)getCurrentBehaviour();
+    	behaviour.moveNextAnimate();
+    }
+     */
+    @Override
+    public final void hit(int damage, float direction_x, float direction_y, @NonNull Player owner) {
+        if (damage > 0) time_since_damage = 0f;//added by ikill240c
+        super.hit(damage, direction_x, direction_y, owner);
+        if (mounted && !on_ship) {
+            mounted_building.hit(damage, direction_x, direction_y, owner);
+        } else if (!isDead()) {
+            hit_points = Math.clamp(hit_points - damage, 0, getTemplate().getMaxHitPoints());
+            if (hit_points == 0) {
+                if (mounted_building instanceof Ship ship) {
+                    ship.getShipHR().removeUnit(this);
+                    drown();
+                } else {
+                    startDying();
+                }
+            }
+        }
+    }
+
+    public final void startDying() {
+        getOwner().unitLost();
+
+        mounted = false;
+        on_ship = false;
+        mount_offset = 0;
+
+        pushController(new DieController(this));
+        forceDecide();
+        getOwner().getWorld().getAudio().newAudio(
+                new AudioParameters(
+                        getTemplate().getDeathSound(),
+                        getPositionX(),
+                        getPositionY(),
+                        getPositionZ(),
+                        AudioPlayer.AUDIO_RANK_DEATH,
+                        AudioPlayer.AUDIO_DISTANCE_DEATH,
+                        AudioPlayer.AUDIO_GAIN_DEATH,
+                        AudioPlayer.AUDIO_RADIUS_DEATH,
+                        1f + (getOwner().getWorld().getRandom().nextFloat() - .5f) * getTemplate().getDeathPitch()));
+        removeDying();
+    }
+
+    public final void stun(float time) {
+        float x = getPositionX() + getTemplate().getStunX() * getDirectionX() + getTemplate().getStunY() * (-getDirectionY());
+        float y = getPositionY() + getTemplate().getStunX() * getDirectionY() + getTemplate().getStunY() * getDirectionX();
+        float z = getOwner().getWorld().getHeightMap().getNearestHeight(x, y) + getTemplate().getStunZ() + mount_offset;
+
+        if (stun_marker != null) {
+            stun_marker.done();
+        }
+        stun_marker = createStunStar(x, y, z, time, (float) Math.PI / 2);
+        pushController(new StunController(this, time));
+        forceDecide();
+    }
+
+    public final boolean isWarrior() {
+        Class type = getWeaponFactory().getType();
+        if (type == RockAxeWeapon.class
+                || type == IronAxeWeapon.class
+                || type == RubberAxeWeapon.class
+                || type == RockSpearWeapon.class
+                || type == IronSpearWeapon.class
+                || type == RubberSpearWeapon.class) {
+            return true;
+        }
+        return false;
+    }
+
+    private @NonNull BalancedParametricEmitter createStunStar(float x, float y, float z, float time, float velocity) {
+        int num_particles = 5;
+        return new BalancedParametricEmitter(getOwner().getWorld(),
+                new StunFunction(.4f, .15f), new Vector3f(x, y, z),
+                velocity, 5f, (float) Math.PI * 2, (float) Math.PI * 2,
+                num_particles, 0f, 2f,
+                new Vector4f(1f, 1f, 1f, 1f), new Vector4f(0f, 0f, 0f, 0f),
+                new Vector3f(.1f, .1f, .1f), new Vector3f(0f, 0f, 0f), time,
+                GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA,
+                getOwner().getWorld().getRacesResources().getStarTextures(),
+                getOwner().getWorld().getAnimationManagerGameTime());
+    }
+
+    public final boolean canAttack(@NonNull Target target, boolean kill_friendly) {
+        assert !isDead();
+        if (!(target instanceof Selectable<?> selectable) || !getAbilities().hasAbilities(Abilities.ATTACK))
+            return false;
+        Player target_player = selectable.getOwner();
+        return kill_friendly || getOwner().isEnemy(target_player);
+    }
+
+    private boolean canBuild(@NonNull Target target) {
+        return target instanceof Building building &&
+                getAbilities().hasAbilities(Abilities.BUILD) &&
+                !building.isPlaced();
+    }
+
+    private boolean canGather(@NonNull Target target) {
+        return target instanceof Supply && getAbilities().hasAbilities(Abilities.BUILD);
+    }
+
+    private boolean canRepair(@NonNull Target target, boolean action_repair) {
+        return target instanceof Building building &&
+                getAbilities().hasAbilities(Abilities.BUILD) &&
+                (action_repair || !building.getAbilities().hasAbilities(Abilities.SUPPLY_CONTAINER)
+                        || !building.isComplete()) &&
+                // getOwner() == building.getOwner() && building.isPlaced() && building.isDamaged();
+                !getOwner().isEnemy(building.getOwner()) && building.isPlaced() && building.isDamaged();
+    }
+
+    public boolean canEnter(@NonNull Target target) {
+        return target instanceof Building building &&
+                !getAbilities().hasAbilities(Abilities.MAGIC) &&
+                building.getUnitContainer() != null &&
+                getOwner() == building.getOwner() &&
+                building.getUnitContainer().canEnter(this);
+    }
+
+    @Override
+    public final float getDefenseChance() {
+        return getCurrentController() instanceof StunController ? 0 : super.getDefenseChance();
+    }
+
+    private void walkToTarget(@NonNull Target target, boolean scan_attack) {
+        Target walkable_target = getUnitGrid().findGridTargets(target.getGridX(), target.getGridY(), 1, false)[0];
+        pushController(new WalkController(this, walkable_target, scan_attack));
+    }
+
+    @Override
+    public void setTarget(@NonNull Target target, @NonNull Action action, boolean aggressive) {
+        if (target == this)
+            return;
+        assert !target.isDead() : "Setting dead target";
+        assert !mounted;
+        if (target instanceof Building) {
+            target = ((Building) target).getEntrance();
+        }
+        switch (action) {
+            case DEFAULT:
+                if (canBuild(target)) {
+                    pushController(new PlaceBuildingController(this, (Building) target));
+                } else if (canGather(target)) {
+                    pushController(new GatherController(this, (Supply) target, ((Supply) target).getClass()));
+                } else if (canRepair(target, false)) {
+                    pushController(new RepairController(this, (Building) target));
+                } else if (canEnter(target)) {
+                    pushController(new EnterController(this, (Building) target));
+                } else if (canAttack(target, false)) {
+                    pushController(new HuntController(this, (Selectable<?>) target));
+                } else {
+                    walkToTarget(target, aggressive);
+                }
+                break;
+            case MOVE:
+                if (canEnter(target)) {
+                    pushController(new EnterController(this, (Building) target));
+                } else {
+                    walkToTarget(target, false);
+                }
+                break;
+            case ATTACK:
+                if (canAttack(target, true)) {
+                    pushController(new HuntController(this, (Selectable<?>) target));
+                } else {
+                    walkToTarget(target, true);
+                }
+                break;
+            case GATHER_REPAIR:
+                if (canGather(target)) {
+                    pushController(new GatherController(this, (Supply) target, ((Supply) target).getClass()));
+                } else if (canRepair(target, true)) {
+                    pushController(new RepairController(this, (Building) target));
+                }
+                break;
+            case DEFEND:
+                pushController(new DefendController(this, target));
+                break;
+            default:
+                IO.println("Invalid action: " + action);
+                break;
+        }
+    }
+
+    public final void printDebugInfo() {
+        IO.println("-----------------------------------");
+        IO.println("Primary Controller = " + getPrimaryController());
+        if (getAbilities().hasAbilities(Abilities.MAGIC)) {
+            IO.println("Hit Points = " + hit_points);
+            IO.println("Magic Energy 0 = " + magic_energy[0]);
+            IO.println("Magic Energy 1 = " + magic_energy[1]);
+            IO.println("Controller = " + getPrimaryController());
+        }
+    }
+
+    // Uses >= instead of == so that floating-point energy that has been clamped to exactly
+    // MAX_MAGIC_ENERGY still passes the check (== on floats is fragile). //added by ikill240c 2026-09-09 15:05
+    public final boolean canDoMagic(int magic_index) {//added by ikill240c
+        return !isDead() && magic_index >= 0 && magic_index < RacesResources.NUM_MAGIC && getOwner().canDoMagic(
+                magic_index) && magic_energy[magic_index] >= MAX_MAGIC_ENERGY[magic_index];
+    }
+
+    public final void doMagic(int magic_index, boolean clear_stack) {//added by ikill240c
+        if (canDoMagic(magic_index)) {
+            if (clear_stack)
+                clearControllerStack();
+            pushController(new MagicController(this, getOwner().getRace().getMagicFactory(magic_index)));
+            magic_energy[magic_index] = 0f;
+            last_magic_index = magic_index;
+
+            // stats
+            getOwner().magicCast();
+
+            triggerChiefsCourage(magic_index);
+        }
+    }
+
+    private void triggerChiefsCourage(int magic_index) {//added by ikill240c
+        float duration = magic_index >= 0 && magic_index < COURAGE_DURATION.length ? COURAGE_DURATION[magic_index] : 6f;
+
+        for (var s : getOwner().getUnits().getSet()) {
+            if (s instanceof Unit unit && !unit.isDead()) {
+                unit.applyCourageBuff(duration, COURAGE_SPEED_MULT, COURAGE_RANGE_BONUS,
+                        COURAGE_ATTACK_SPEED_MULT, COURAGE_COMBAT_MULT);
+            }
+        }
+
+        float z = getPositionZ() + getHitOffsetZ();
+        getOwner().getWorld().getAudio().newAudio(new AudioParameters<>(
+                getOwner().getWorld().getRacesResources().getStunSound(getOwner().getWorld().getRandom()),
+                getPositionX(), getPositionY(), z,
+                AudioPlayer.AUDIO_RANK_MAGIC,
+                AudioPlayer.AUDIO_DISTANCE_MAGIC,
+                AudioPlayer.AUDIO_GAIN_STUN_LUR,
+                AudioPlayer.AUDIO_RADIUS_STUN_LUR,
+                1f));
+    }
+
+    public final int getLastMagicIndex() {
+        return last_magic_index; // for tutorial
+    }
+
+    public final float getMagicProgress(int magic_index) {
+        return magic_energy[magic_index] / MAX_MAGIC_ENERGY[magic_index];
+    }
+
+    public final void switchAnimation(float anim_speed, @NonNull int animation) {
+        assert !isDead();
+        if (supply_container != null) {
+            supply_container.resetSupply(LeftPaddle.class);
+            supply_container.resetSupply(RightPaddle.class);
+        }
+        this.anim_speed = anim_speed;
+        if (this.animation != animation) {
+            this.animation = animation;
+            this.anim_time = 0f;
+        } else if (getTemplate().getSpriteRenderer().getAnimationType(
+                animation) == AnimationInfo.AnimationType.PLAIN.ordinal()) {
+                    this.anim_time = 0f;
+                }
+    }
+
+    @Override
+    public final int getAnimation() {
+        return animation;
+    }
+
+    @Override
+    public final float getAnimationTicks() {
+        return anim_time;
+    }
+
+    public final float getMountOffset() {
+        assert !isDead();
+        return mount_offset;
+    }
+
+    @Override
+    public final float getOffsetZ() {
+        if (mounted)
+            return mounted_building.getOffsetZ() + mount_offset;
+        else {
+            if (isDead()) {
+                DieBehaviour die_behaviour = (DieBehaviour) getCurrentBehaviour();
+                return die_behaviour.getOffsetZ();
+            } else
+                return calculateSlopeOffset();
+        }
+    }
+
+    private float calculateSlopeOffset() {
+        // Check surrounding heights to lift unit on slopes
+        float r = getSize() * 0.2f; // Check closer to center (feet) to avoid excessive floating
+        float x = getPositionX();
+        float y = getPositionY();
+        var hm = getOwner().getWorld().getHeightMap();
+
+        float h_center = hm.getNearestHeight(x, y);
+        float h_max = h_center;
+
+        // Axis-aligned
+        h_max = Math.max(h_max, hm.getNearestHeight(x + r, y));
+        h_max = Math.max(h_max, hm.getNearestHeight(x - r, y));
+        h_max = Math.max(h_max, hm.getNearestHeight(x, y + r));
+        h_max = Math.max(h_max, hm.getNearestHeight(x, y - r));
+
+        // Diagonals (approx 0.707 * r)
+        float d = r * 0.707f;
+        h_max = Math.max(h_max, hm.getNearestHeight(x + d, y + d));
+        h_max = Math.max(h_max, hm.getNearestHeight(x - d, y + d));
+        h_max = Math.max(h_max, hm.getNearestHeight(x + d, y - d));
+        h_max = Math.max(h_max, hm.getNearestHeight(x - d, y - d));
+
+        return Math.max(0f, h_max - h_center);
+    }
+
+    public final float getHitError() {
+        return on_ship ? 2.2f : 0.0f;
+    }
+
+    public final void debugRender() {
+        path_tracker.debugRender();
+    }
+}
