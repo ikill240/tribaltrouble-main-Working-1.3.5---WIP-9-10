@@ -61,6 +61,9 @@ public final class ModeAndPresetsPanel extends Panel {
         Label mode_label = new Label(i18n("mode_label"), Skin.getSkin().getEditFont());
         PulldownMenu<GameMode> mode_menu = new PulldownMenu<>();
         mode_menu.addItem(new PulldownItem<>(i18n("standard_title"), GameMode.STANDARD));
+        mode_menu.addItem(new PulldownItem<>(i18n("koth_title"), GameMode.KING_OF_THE_ISLAND)); //added by ikill240c - needs a "koth_title" key added to this panel's i18n bundle, same as "standard_title"
+        mode_menu.addItem(new PulldownItem<>(i18n("kingofthehill_title"), GameMode.KING_OF_THE_HILL)); //added by ikill240c
+        mode_menu.addItem(new PulldownItem<>(i18n("survival_title"), GameMode.SURVIVAL)); //added by ikill240c - this is the actual, functional mode selector (modeChosen() below sets TerrainMenu's selected_mode directly) - a separate pulldown was mistakenly added inside TerrainMenu's own layout instead of here, which is why Survival didn't actually show up as a real option
         PulldownButton<GameMode> mode_button = new PulldownButton<>(gui_root, mode_menu, 0, MODE_PULLDOWN_WIDTH);
         mode_menu.addItemChosenListener((menu, index) -> {
             GameMode mode = menu.getItem(index).getAttachment();

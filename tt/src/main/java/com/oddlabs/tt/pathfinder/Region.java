@@ -7,12 +7,23 @@ import org.jspecify.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashSet; //added by ikill240c
 import java.util.List;
 import java.util.Map;
+import java.util.Set; //added by ikill240c
 
 public final class Region extends Node {
     private final Map<Class<?>, List<?>> object_lists = new HashMap<>();
-    private final List<Region> neighbours = new ArrayList<>();
+    // Was ArrayList<Region>, making link()'s own r1.neighbours.contains(r2) check an O(n) linear
+    // scan - called for every 8-directional neighbor pair across the ENTIRE unit grid (16.7
+    // million cells x 8 = ~134 million calls at SIZE_UNREAL's 4096x4096 unit-grid resolution), so
+    // this cost compounded directly with both map size AND how many neighbors a given region
+    // happened to accumulate (worse on more fragmented/coastal terrain, which large maps produce
+    // more of). LinkedHashSet keeps the same "add, then iterate once, in roughly insertion order"
+    // usage this class already relies on (see the three plain for-each loops below), while making
+    // contains() O(1) instead of O(n) - this was likely a major, if not the primary, contributor
+    // to SIZE_UNREAL generation appearing to hang. //added by ikill240c
+    private final Set<Region> neighbours = new LinkedHashSet<>(); //added by ikill240c
 
     private int center_x;
     private int center_y;

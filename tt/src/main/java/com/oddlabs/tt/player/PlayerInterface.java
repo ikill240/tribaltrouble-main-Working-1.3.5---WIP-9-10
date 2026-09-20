@@ -28,9 +28,19 @@ public interface PlayerInterface {
 
     void exitTower(@NonNull Building building);
 
+    /**
+     * "Stand Ground" for every attack-capable unit in the given selection - see
+     * Unit.standGround() for exactly what this does and why it's not a new Controller.
+     * //added by ikill240c
+     */
+    void standGround(@NonNull Selectable<?> @NonNull [] units); //added by ikill240c
+
     void trainChieftain(@NonNull Building building, boolean start);
 
-    void placeBuilding(Selectable<?> @NonNull [] selection, int template_id, int placing_grid_x, int placing_grid_y);
+    void placeBuilding(Selectable<?> @NonNull [] selection, int template_id, int placing_grid_x, int placing_grid_y,
+            boolean queue); //added by ikill240c - queue=true appends to the builder's order queue (shift-click repeat placement) instead of immediately taking over, so buildings get worked on in the order they were clicked instead of each click abandoning the previous site
+
+    void setFormation(Selectable<?> @NonNull [] selection, @NonNull Formation formation); //added by ikill240c - was setFormation(Formation) with no selection; formation is now per-unit, not global, so the selection it applies to must be passed explicitly
 
     void setRallyPoint(@NonNull Building building, @NonNull Target target);
 

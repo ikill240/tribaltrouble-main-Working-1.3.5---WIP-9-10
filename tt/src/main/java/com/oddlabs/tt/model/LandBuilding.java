@@ -34,29 +34,31 @@ import org.lwjgl.opengl.GL11;
 import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.HashSet;
+import java.util.Set;
 
 public final class LandBuilding extends Building {
     private static final float REMOVE_DELAY = 1f / 10f;
 
     private static final int PLACING_BORDER = 1;
-    private static final int MAX_SUPPLY_COUNT = 50000;//og 200
+    private static final int MAX_SUPPLY_COUNT = 100000;//og 200
 
     @SuppressWarnings({"unchecked"})
     public static final Cost COST_ROCK_WEAPON = new Cost(new Class[]{TreeSupply.class, RockSupply.class},
             new int[]{2, 1});
     @SuppressWarnings({"unchecked"})
     public static final Cost COST_IRON_WEAPON = new Cost(new Class[]{TreeSupply.class, IronSupply.class},
-            new int[]{3, 1});
+            new int[]{2, 1});
     @SuppressWarnings({"unchecked"})
     public static final Cost COST_RUBBER_WEAPON = new Cost(
             new Class[]{TreeSupply.class, RockSupply.class, IronSupply.class, RubberSupply.class},
-            new int[]{4, 1, 1, 1});
+            new int[]{2, 1, 1, 1});
 
     private static final float DAMAGED_PARTICLE_ALPHA = 3f;
 
     // Maximum number of chieftains a single quarters building can produce. Change this value to
     // allow each quarters to produce more or fewer chieftains. //added by ikill240 2026-09-09 20:45
-    public static final int DEFAULT_MAX_CHIEFTAINS_PER_QUARTERS = 1; //added by ikill240 2026-09-09 20:45
+    public static final int DEFAULT_MAX_CHIEFTAINS_PER_QUARTERS = 10; //added by ikill240 2026-09-09 20:45
 
     private final Map<@NonNull Class<?>, @NonNull SupplyContainer> supply_containers = new HashMap<>();
     private final Map<@NonNull Class<?>, @NonNull BuildProductionContainer> build_containers = new HashMap<>();
@@ -388,9 +390,20 @@ public final class LandBuilding extends Building {
 
     }
 
+    /**
+     * This building's max HP after applying the building health multiplier. Deliberately a live
+     * method rather than a cached field, same reasoning as Unit.getEffectiveMaxHitPoints() - keeps a
+     * single source of truth rather than risking a stale cached value if the setting were ever changed
+     * mid-game (e.g. via a future in-game settings change). //added by ikill240c
+     */
+    @Override
+    public final int getEffectiveMaxHitPoints() { //added by ikill240c
+        return Math.round(getTemplate().getMaxHitPoints() * getOwner().getWorld().getBuildingHealthMultiplier());
+    }
+
     public boolean isDamaged() {
         assert !isDead();
-        return hit_points > 0 && hit_points < getTemplate().getMaxHitPoints();
+        return hit_points > 0 && hit_points < getEffectiveMaxHitPoints(); //added by ikill240c
     }
 
     public int getHitPoints() {
@@ -400,9 +413,9 @@ public final class LandBuilding extends Building {
     private void setHitPoints(int new_hit_points) {
         final float MIN_ENERGY = 3f;
         final float MAX_ENERGY = 5f;
-        final int START_SMOKE = getTemplate().getMaxHitPoints() / 2;
-        hit_points = Math.max(Math.min(new_hit_points, getTemplate().getMaxHitPoints()), 0);
-        if (build_points == getTemplate().getMaxHitPoints() && hit_points < START_SMOKE) {
+        final int START_SMOKE = getEffectiveMaxHitPoints() / 2; //added by ikill240c
+        hit_points = Math.max(Math.min(new_hit_points, getEffectiveMaxHitPoints()), 0); //added by ikill240c
+        if (build_points == getEffectiveMaxHitPoints() && hit_points < START_SMOKE) { //added by ikill240c
             float energy = MIN_ENERGY + ((1 - (float) hit_points / (START_SMOKE)) * (MAX_ENERGY - MIN_ENERGY));
             damaged_emitter.start();
             damaged_emitter.setDeltaColor(new Vector4f(0f, 0f, 0f, -DAMAGED_PARTICLE_ALPHA / energy));
@@ -418,10 +431,10 @@ public final class LandBuilding extends Building {
             return;
 
         setHitPoints(hit_points + amount);
-        if (build_points < getTemplate().getMaxHitPoints()) {
-            build_points = Math.min(build_points + amount, getTemplate().getMaxHitPoints());
+        if (build_points < getEffectiveMaxHitPoints()) { //added by ikill240c
+            build_points = Math.min(build_points + amount, getEffectiveMaxHitPoints()); //added by ikill240c
             reinsert();
-            if (build_points == getTemplate().getMaxHitPoints()) {
+            if (build_points == getEffectiveMaxHitPoints()) { //added by ikill240c
                 getOwner().getWorld().getNotificationListener().newSelectableNotification(this);
                 getAbilities().addAbilities(getTemplate().getAbilities());
                 supply_containers.put(Unit.class, getTemplate().getUnitContainerFactory().createContainer(this));
@@ -517,7 +530,7 @@ public final class LandBuilding extends Building {
     }
 
     public boolean isComplete() {
-        return build_points == getTemplate().getMaxHitPoints();
+        return build_points == getEffectiveMaxHitPoints(); //added by ikill240c
     }
 
     @Override
@@ -529,14 +542,19 @@ public final class LandBuilding extends Building {
         if (!unit_grid.getHeightMap().canBuild(grid_x, grid_y, size))
             return false;
 
+        int gsize = unit_grid.getGridSize();
+
         for (int y = 0; y < size * 2 - 1; y++) {
             for (int x = 0; x < size * 2 - 1; x++) {
-                int current_grid_x = grid_x + x - (size - 1);
-                int current_grid_y = grid_y + y - (size - 1);
-                if (current_grid_x >= unit_grid.getGridSize() || current_grid_y >= unit_grid.getGridSize() ||
-                        current_grid_x < 0 || current_grid_y < 0 || unit_grid.isGridOccupied(current_grid_x,
-                                current_grid_y))
+                int cx = grid_x + x - (size - 1);
+                int cy = grid_y + y - (size - 1);
+                if (cx >= gsize || cy >= gsize || cx < 0 || cy < 0) {
                     return false;
+                }
+                var occ = unit_grid.getOccupant(cx, cy);
+                if (occ != null && !(occ instanceof Unit)) {
+                    return false;
+                }
             }
         }
         return true;
@@ -638,13 +656,24 @@ public final class LandBuilding extends Building {
     public void setRallyPoint(@NonNull Target target) {
         if (!getOwner().canSetRallyPoints())
             return;
-        rally_point = isValidRallyPoint(target) ? target : getUnitGrid().findGridTargets(target.getGridX(),
-                target.getGridY(), 1, false)[0];
+        if (isValidRallyPoint(target)) {
+            rally_point = target;
+        } else {
+            // findGridTargets(...)[0] can legitimately return null when no valid, unoccupied cell is
+            // found near the requested point. Previously this was assigned straight into rally_point
+            // unconditionally, which could set it to null (the field is not @Nullable and defaults to
+            // `this`) - every caller of getRallyPoint()/hasRallyPoint() downstream assumes a real
+            // Target. Now simply leaves the existing rally point unchanged when no valid replacement is
+            // found, instead of corrupting it. //added by ikill240c
+            Target found = getUnitGrid().findGridTargets(target.getGridX(), target.getGridY(), 1, false)[0];
+            if (found != null)
+                rally_point = found;
+        }
     }
 
     @Override
     public @NonNull BuildState getRenderLevel() {
-        return build_points == getTemplate().getMaxHitPoints() ? BuildState.BUILT : (float) build_points / getTemplate().getMaxHitPoints() < .5 ? BuildState.START : BuildState.HALFBUILT;
+        return build_points == getEffectiveMaxHitPoints() ? BuildState.BUILT : (float) build_points / getEffectiveMaxHitPoints() < .5 ? BuildState.START : BuildState.HALFBUILT; //added by ikill240c
     }
 
     @Override
@@ -704,10 +733,21 @@ public final class LandBuilding extends Building {
         UnitGrid grid = getUnitGrid();
         grid.getRegion(getGridX(), getGridY()).registerObject(Building.class, this);
         int size = getTemplate().getPlacingSize() * 2 - 1;
+        Set<Unit> trappedUnits = new HashSet<Unit>();
         for (int y = PLACING_BORDER; y < size - PLACING_BORDER; y++) {
             for (int x = PLACING_BORDER; x < size - PLACING_BORDER; x++) {
-                grid.occupyGrid(getGridX() - size / 2 + x, getGridY() - size / 2 + y, this);
+                int cx = getGridX() - size / 2 + x;
+                int cy = getGridY() - size / 2 + y;
+                var occ = grid.getOccupant(cx, cy);
+                if (occ instanceof Unit unit) {
+                    trappedUnits.add(unit);
+                    unit.free();
+                }
+                grid.occupyGrid(cx, cy, this);
             }
+        }
+                for (Unit unit : trappedUnits) {
+            unit.reposition();
         }
     }
 

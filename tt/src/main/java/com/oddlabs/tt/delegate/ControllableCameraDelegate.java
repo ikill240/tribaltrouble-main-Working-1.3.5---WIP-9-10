@@ -88,6 +88,37 @@ public abstract class ControllableCameraDelegate extends InGameDelegate {
         return Renderer.getLocalInput().getInputProvider().isCursorInWindow();
     }
 
+    // Opt-in helper for subclasses that represent a transient "waiting for a click" mode
+    // (TargetDelegate, PlacingDelegate) - NOT called automatically from this class's own
+    // handleInput(), since SelectionDelegate (the base delegate, also a subclass of this one) is
+    // the one place that actually OWNS map mode's toggle logic and must keep handling
+    // CAMERA_MAP_MODE itself rather than having it intercepted here.
+    //
+    // CAMERA_MAP_MODE's own toggle logic lives entirely in SelectionDelegate, but
+    // GUIRoot.pushDelegate() detaches the previous top delegate from the GUI tree outright (not
+    // merely covers it) whenever a new one is pushed - so while a TargetDelegate/PlacingDelegate
+    // is active (e.g. waiting for the player to click a move/attack/guard/patrol destination, or
+    // a building placement site), SelectionDelegate isn't in the tree at all and there is no path
+    // for a Space/Numpad5 press to ever reach its map-mode handler. Previously this meant the key
+    // simply did nothing while such a delegate was active, with no visible feedback at all - a
+    // player would naturally try clicking next, except the pending click-target mode was still
+    // silently armed, so that click got interpreted as "commit to this target/placement" instead
+    // of whatever the player actually intended (a plain selection click, a camera adjustment,
+    // etc.), moving units or placing a building somewhere far from the intended spot. Popping
+    // here at least surfaces the state change and cancels the pending action (matching how these
+    // same delegates already cancel on Escape/UI_CANCEL) rather than leaving it silently armed;
+    // map mode then works normally on the very next Space press once SelectionDelegate is
+    // restored to the tree. //added by ikill240c
+    protected final boolean handleMapModeWhileTransient(@NonNull InputEvent event) { //added by ikill240c
+        if ((event.getPhase() == InputPhase.PRESSED || event.getPhase() == InputPhase.REPEAT) //added by ikill240c
+                && event.consumeAction(GameAction.CAMERA_MAP_MODE)) { //added by ikill240c
+            pop(); //added by ikill240c
+            event.consume(); //added by ikill240c
+            return true; //added by ikill240c
+        } //added by ikill240c
+        return false; //added by ikill240c
+    }
+
     private void pushFirstPersonDelegate(boolean key_pressed) {
         first_person_delegate = new FirstPersonDelegate(getViewer(), getCamera().getState(), key_pressed);
         getGUIRoot().pushDelegate(first_person_delegate);

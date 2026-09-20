@@ -272,6 +272,16 @@ public final class GLRenderContext implements RenderContext {
         if (currentDepthFunc == func) return NO_OP;
         int previous = currentDepthFunc;
         setDepthFunc(func);
-        return () -> setDepthFunc(previous);
+        // If shadow state had just been invalidated (reset() sets currentDepthFunc = -1 to force
+        // the NEXT set* call to actually talk to GL) at the moment this scope opened, "previous"
+        // here is that -1 sentinel, not a real depth func - restoring it on scope-close would call
+        // glDepthFunc(-1), an invalid GL enum, producing exactly the
+        // "glDepthFunc produced error: 1280 (0x500)" / "Invalid depth func value: -1" pair this was
+        // logging. There's no real previous depth func to go back to in that case (the shadow
+        // state didn't know what GL's actual depth func was), so restore to this class's own
+        // documented default (GL_LEQUAL, matching the field's own initializer) rather than to a
+        // sentinel that was never a valid GL value to begin with. //added by ikill240c
+        int restore_to = previous == -1 ? GL11.GL_LEQUAL : previous; //added by ikill240c
+        return () -> setDepthFunc(restore_to); //added by ikill240c
     }
 }

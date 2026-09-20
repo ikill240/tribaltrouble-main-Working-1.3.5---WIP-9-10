@@ -212,6 +212,7 @@ public final class GameMenu extends Panel implements ConfigurationListener, Chat
                 case EASY_AI -> applyAi(server, i, race, team, PlayerSlot.AI_EASY);
                 case NORMAL_AI -> applyAi(server, i, race, team, PlayerSlot.AI_NORMAL);
                 case HARD_AI -> applyAi(server, i, race, team, PlayerSlot.AI_HARD);
+                case INSANE_AI -> applyAi(server, i, race, team, PlayerSlot.AI_INSANE); //added by ikill240c
             }
         }
     }

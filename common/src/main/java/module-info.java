@@ -9,6 +9,7 @@ module com.oddlabs.common {
     exports com.oddlabs.event;
     exports com.oddlabs.geometry;
     exports com.oddlabs.http;
+    exports com.oddlabs.mapeditor; //added by ikill240c
     exports com.oddlabs.matchmaking;
     exports com.oddlabs.net;
     exports com.oddlabs.procedural;

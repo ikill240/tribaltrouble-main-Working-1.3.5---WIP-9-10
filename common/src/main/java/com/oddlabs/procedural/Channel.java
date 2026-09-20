@@ -4,6 +4,8 @@ import com.oddlabs.util.Utils;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 
+import java.io.Serial;
+import java.io.Serializable;
 import java.nio.ByteBuffer;
 import java.util.List;
 import java.util.Objects;
@@ -15,7 +17,17 @@ import java.util.zip.Checksum;
  * (e.g., red, green, blue, or alpha) or other procedural generation data like heightmaps.
  */
 @SuppressWarnings("UnusedReturnValue")
-public final class Channel {
+public final class Channel implements Serializable { //added by ikill240c
+    // Was never needed before CustomMapGenerator started holding an AuthoredTerrain (which holds
+    // a Channel) as a field on a class that implements WorldGenerator extends Serializable - the
+    // whole generator gets shipped across the network to joining players (even in singleplayer,
+    // which still routes through loopback networking), so every field it transitively holds must
+    // be Serializable too. All of Channel's own fields (a float[][], two ints, a boolean) are
+    // already trivially serializable once the class itself opts in - no custom
+    // readObject/writeObject needed. //added by ikill240c
+    @Serial //added by ikill240c
+    private static final long serialVersionUID = 1L; //added by ikill240c
+
     private float @NonNull [] @NonNull [] pixels;
     public int width;
     public int height;
@@ -1256,13 +1268,25 @@ public final class Channel {
         Channel fillmap = new Channel(width, height);
         int[] fillcoords = tmp.findFirst(value);
         int max_count = 0;
+        // Was allocated fresh INSIDE the loop below - once per disconnected region found. On a
+        // large, irregular map (worst case observed: SIZE_UNREAL at 4096x4096, but any map with
+        // many small disconnected patches is affected) that meant a fresh width*height boolean
+        // array - tens of megabytes at that size - allocated and discarded per region, potentially
+        // hundreds or thousands of times over the course of one call. That's enough transient
+        // allocation to cause severe GC pressure/thrashing that looks indistinguishable from a
+        // hang. Hoisted out and reused across every region instead - safe to do because a pixel is
+        // only ever marked true once it's been enqueued as part of SOME region's flood-fill, and by
+        // definition two different connected regions never share a pixel, so a stale `true` left
+        // over from an earlier region can never incorrectly block exploration of a later one; it
+        // would only ever suppress re-visiting a pixel that's already been (or is about to be)
+        // fully processed, which is exactly what it's supposed to do. //added by ikill240c
+        boolean[][] marked = new boolean[width][height]; //added by ikill240c - hoisted out of the while loop below
         while (fillcoords[0] != -1) { // while reachable pixels remain
             int count = 0;
             int init_x = fillcoords[0];
             int init_y = fillcoords[1];
             fillmap.fill(0f);
             // flood fill
-            boolean[][] marked = new boolean[width][height];
             marked[init_x][init_y] = true;
             List<int[]> list = new java.util.LinkedList<>();
             list.add(new int[]{init_x, init_y});
@@ -1304,13 +1328,16 @@ public final class Channel {
         int[] fillcoords = tmp.findFirst(value);
         int area_count = 0;
         int area_total = 0;
+        // Same fix as largestConnected() above, and for the same reason - see its comment for the
+        // full explanation of why hoisting this out and reusing it across regions is safe.
+        // //added by ikill240c
+        boolean[][] marked = new boolean[width][height]; //added by ikill240c - hoisted out of the while loop below
         while (fillcoords[0] != -1) { // while reachable pixels remain
             area_count++;
             int count = 0;
             int init_x = fillcoords[0];
             int init_y = fillcoords[1];
             // flood fill
-            boolean[][] marked = new boolean[width][height];
             marked[init_x][init_y] = true;
             List<int[]> list = new java.util.LinkedList<>();
             list.add(new int[]{init_x, init_y});
@@ -1433,8 +1460,15 @@ public final class Channel {
     }
 
     public int[] find(int radius, int x_start, int y_start, float value) {
-        if (getPixel(x_start, y_start) == value)
-            return new int[]{x_start, y_start};
+        // Was getPixel(x_start, y_start) - a plain bounds-checked lookup, inconsistent with the
+        // wrap-around getPixelWrap() used everywhere else in this method (and with the "find" name,
+        // which implies searching the whole toroidal map like findNoWrap's non-wrapping counterpart
+        // does not). Callers do legitimately pass out-of-range starting coordinates here - e.g.
+        // Landscape.generateUnitLocations() chains this straight off another find's result - so an
+        // out-of-range x_start/y_start threw IndexOutOfBoundsException instead of wrapping and
+        // searching normally. //added by ikill240c 2026-09-12
+        if (getPixelWrap(x_start, y_start) == value) //added by ikill240c 2026-09-12
+            return new int[]{(x_start + width) % width, (y_start + height) % height}; //added by ikill240c 2026-09-12
         int r = 1;
         while (r <= radius) {
             int x = x_start - r;

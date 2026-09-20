@@ -36,7 +36,13 @@ public final class ReproduceUnitContainer extends UnitContainer {
 
     @Override
     public boolean canEnter(@NonNull Unit unit) {
-        return !unit.getAbilities().hasAbilities(Abilities.THROW) && getTotalSupplies() != getMaxSupplyCount();
+        // Same additional owner-population-cap check as WorkerUnitContainer.canEnter() - see its
+        // comment for why it's now conditioned on this actually being a cross-owner (donated)
+        // entry, rather than applying unconditionally to a player's own units entering their own
+        // building. //added by ikill240c
+        boolean cross_owner_donation = unit.getOwner() != building.getOwner(); //added by ikill240c
+        return !unit.getAbilities().hasAbilities(Abilities.THROW) && getTotalSupplies() != getMaxSupplyCount() //added by ikill240c
+                && (!cross_owner_donation || !building.getOwner().getUnitCountContainer().isSupplyFull()); //added by ikill240c
     }
 
     private int getTotalSupplies() {

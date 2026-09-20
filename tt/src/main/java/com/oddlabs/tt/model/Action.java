@@ -5,5 +5,7 @@ public enum Action {
     MOVE,
     ATTACK,
     GATHER_REPAIR,
-    DEFEND
+    DEFEND,
+    GUARD, //added by ikill240c
+    PATROL //added by ikill240c
 }

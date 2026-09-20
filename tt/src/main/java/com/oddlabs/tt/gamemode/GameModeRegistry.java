@@ -1,7 +1,10 @@
 package com.oddlabs.tt.gamemode;
 
 import com.oddlabs.matchmaking.GameMode;
+import com.oddlabs.tt.gamemode.koth.KingOfTheIslandModeRules; //added by ikill240c
+import com.oddlabs.tt.gamemode.koth.KingOfTheHillModeRules; //added by ikill240c
 import com.oddlabs.tt.gamemode.standard.StandardModeRules;
+import com.oddlabs.tt.gamemode.survival.SurvivalModeRules; //added by ikill240c
 import org.jspecify.annotations.NonNull;
 
 import java.util.EnumMap;
@@ -17,6 +20,9 @@ public final class GameModeRegistry {
 
     static {
         REGISTRY.put(GameMode.STANDARD, new StandardModeRules());
+        REGISTRY.put(GameMode.KING_OF_THE_ISLAND, new KingOfTheIslandModeRules()); //added by ikill240c
+        REGISTRY.put(GameMode.KING_OF_THE_HILL, new KingOfTheHillModeRules()); //added by ikill240c
+        REGISTRY.put(GameMode.SURVIVAL, new SurvivalModeRules()); //added by ikill240c
     }
 
     private GameModeRegistry() {

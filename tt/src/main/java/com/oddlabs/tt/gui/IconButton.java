@@ -9,7 +9,7 @@ import java.util.function.Supplier;
 
 /** a click-able button represented by an icon */
 public class IconButton extends ButtonObject {
-    private final @NonNull ModeIconQuads icon;
+    private @NonNull ModeIconQuads icon; //added by ikill240c - was final; see setIcon() below for why
     private @Nullable IconDisabler icon_disabler;
 
     public IconButton(@NonNull ModeIconQuads icon, @Nullable Supplier<@NonNull String> tool_tip) {
@@ -26,6 +26,17 @@ public class IconButton extends ButtonObject {
 
     public final void setIconDisabler(@Nullable IconDisabler icon_disabler) {
         this.icon_disabler = icon_disabler;
+    }
+
+    // Lets a button's icon be swapped after construction - needed for a magic button whose icon
+    // should reflect whichever race the currently-selected chieftain is ACTUALLY casting with
+    // (see Unit.getMagicRaceOverride()), rather than being permanently fixed to whichever race the
+    // button happened to be built for. Re-applies setDim() too, in case the new icon has different
+    // dimensions than the one it's replacing. //added by ikill240c
+    public final void setIcon(@NonNull ModeIconQuads icon) { //added by ikill240c
+        this.icon = icon; //added by ikill240c
+        var normal = icon.quad(ModeIconQuads.Mode.NORMAL); //added by ikill240c
+        setDim(normal.getWidth(), normal.getHeight()); //added by ikill240c
     }
 
     public final void doUpdate() {

@@ -17,6 +17,14 @@ public final class TerrainMenuForm extends Form implements TerrainMenuListener {
         compileCanvas();
     }
 
+    // Exposes the underlying TerrainMenu so callers can pre-select a custom map (e.g. MainMenu's
+    // "Preview in Game" handoff from the standalone map editor - see PreviewRequest) right after
+    // construction, without needing this form to grow a second, wider constructor overload just
+    // for that one use. //added by ikill240c
+    public @NonNull TerrainMenu getTerrainMenu() { //added by ikill240c
+        return terrain;
+    }
+
     @Override
     public void setFocus(@NonNull FocusDirection direction) {
         if (direction == FocusDirection.BACKWARD) {

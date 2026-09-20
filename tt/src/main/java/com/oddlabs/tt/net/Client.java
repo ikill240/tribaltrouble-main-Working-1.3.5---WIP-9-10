@@ -69,9 +69,41 @@ public final class Client implements ARMIEventBroker, GameClientInterface, Conne
 
         this.unit_infos = new UnitInfo[MatchmakingServerInterface.MAX_PLAYERS];
         for (int i = 0; i < unit_infos.length; i++) {
-            // Starting peons come from the world settings so the initial units slider
-            // actually changes how many units a player spawns with. //added by ikill240c 2026-09-10 00:00
-            unit_infos[i] = new UnitInfo(false, false, 0, 0, false, world_params.getInitialUnitCount(), 0, 0, 0);//added by ikill240c 2026-09-10 00:00
+            // Starting peons AND warriors-by-type come from the world settings, so the "starting
+            // units"/"starting warriors" sliders actually change what a player spawns with. Was
+            // hardcoded to 0 for all three warrior counts - the original game never spawned any
+            // starting warriors at all, so 0 remains the correct default; this just makes it an
+            // actual, changeable setting instead of an unconditional constant. //added by ikill240c
+            int peons = world_params.getInitialUnitCount(); //added by ikill240c 2026-09-14
+            int rock_warriors = world_params.getStartingRockWarriors(); //added by ikill240c 2026-09-14
+            int iron_warriors = world_params.getStartingIronWarriors(); //added by ikill240c 2026-09-14
+            int rubber_warriors = world_params.getStartingRubberWarriors(); //added by ikill240c 2026-09-14
+            // These four counts come from independent TerrainMenu sliders with nothing enforcing
+            // that they fit within Max Unit Count (also its own independent slider) - a player could
+            // pick a low Max Unit Count together with high starting-warrior counts and their own
+            // starting spawn wouldn't fit in their own unit container, hitting
+            // `assert increaseSupply(1) == 1` ("No room for new unit in player unit container") in
+            // Unit's constructor before any real gameplay even started. Clamp the total down to fit,
+            // trimming the newer/more-optional warrior counts first (rubber, then iron, then rock)
+            // and leaving peons - the one setting a base can't function without - alone unless even
+            // peons alone would overflow an even smaller Max Unit Count, in which case they get
+            // clamped too as a last resort rather than crash regardless. //added by ikill240c 2026-09-14
+            int max_units = world_params.getMaxUnitCount(); //added by ikill240c 2026-09-14
+            int over = peons + rock_warriors + iron_warriors + rubber_warriors - max_units; //added by ikill240c 2026-09-14
+            if (over > 0) { //added by ikill240c 2026-09-14
+                int rubber_trim = Math.min(rubber_warriors, over); //added by ikill240c 2026-09-14
+                rubber_warriors -= rubber_trim; //added by ikill240c 2026-09-14
+                over -= rubber_trim; //added by ikill240c 2026-09-14
+                int iron_trim = Math.min(iron_warriors, over); //added by ikill240c 2026-09-14
+                iron_warriors -= iron_trim; //added by ikill240c 2026-09-14
+                over -= iron_trim; //added by ikill240c 2026-09-14
+                int rock_trim = Math.min(rock_warriors, over); //added by ikill240c 2026-09-14
+                rock_warriors -= rock_trim; //added by ikill240c 2026-09-14
+                over -= rock_trim; //added by ikill240c 2026-09-14
+                peons = Math.max(0, peons - over); //added by ikill240c 2026-09-14
+            } //added by ikill240c 2026-09-14
+            unit_infos[i] = new UnitInfo(false, false, 0, 0, false, peons, //added by ikill240c 2026-09-14
+                    rock_warriors, iron_warriors, rubber_warriors); //added by ikill240c 2026-09-14
         }
     }
 

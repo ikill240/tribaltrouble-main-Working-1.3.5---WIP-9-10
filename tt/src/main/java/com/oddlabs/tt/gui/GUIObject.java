@@ -165,6 +165,24 @@ public abstract class GUIObject extends Renderable<GUIObject> implements ToolTip
         placed = true;
     }
 
+    // Repositions an object that's ALREADY been placed once, relative to a (possibly different)
+    // neighbor - place() asserts the object has never been placed before, by design, to catch
+    // accidental double-placement bugs; this is for the deliberate, different case of a
+    // long-lived widget whose anchor gets rebuilt from scratch (e.g. a checkbox anchored below a
+    // player roster that gets torn down and recreated whenever the player count changes) needing
+    // to be re-anchored to the new instance. Does exactly what place() does, just without that
+    // assertion - was previously worked around by calling place() again directly, which crashed
+    // outright ("Object already placed") the first time the anchor was ever actually rebuilt after
+    // initial construction. //added by ikill240c
+    public final void replace(@NonNull GUIObject neighbor, @NonNull Placement direction, int spacing) { //added by ikill240c
+        int new_x = getXFromDirection(direction, spacing, neighbor.getX(), neighbor.getWidth()); //added by ikill240c
+        int new_y = getYFromDirection(direction, spacing, neighbor.getY(), neighbor.getHeight()); //added by ikill240c
+
+        origin = neighbor.origin; //added by ikill240c
+        setPos(new_x, new_y); //added by ikill240c
+        placed = true; //added by ikill240c
+    }
+
     private int getXFromDirection(@NonNull Placement direction, int spacing, int neighbour_x, int neighbour_width) {
         return switch (direction) {
             case BOTTOM_LEFT, TOP_LEFT -> neighbour_x;

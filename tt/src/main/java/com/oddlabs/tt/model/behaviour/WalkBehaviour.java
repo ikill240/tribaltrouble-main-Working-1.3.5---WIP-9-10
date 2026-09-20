@@ -17,10 +17,22 @@ public final class WalkBehaviour implements Behaviour {
     private static final float WAIT_RETRY_DELAY = 1f / 2f;
     private static final float MAX_WAIT_RETRY_DELAY = 5f;
 
+    // Lets a caller customize what happens when scan() finds an enemy mid-walk, instead of always
+    // pushing the plain, unleashed HuntController - GuardController needs this so a chase
+    // triggered by this scan still respects its leash (see LeashedHuntController), rather than
+    // potentially being pulled arbitrarily far from wherever it's actually supposed to be
+    // watching. Defaults to the original HuntController::new below for every other caller, so
+    // this is purely additive - nothing about existing behavior changes unless a caller opts in.
+    // //added by ikill240c
+    public interface HuntControllerFactory { //added by ikill240c
+        @NonNull Controller create(@NonNull Unit unit, @NonNull Selectable<?> target); //added by ikill240c
+    }
+
     private final @NonNull Unit unit;
     private final @NonNull TrackerAlgorithm tracker_algorithm;
     private final @NonNull AttackScanFilter scan_filter;
     private final boolean scan_attack;
+    private final @NonNull HuntControllerFactory hunt_controller_factory; //added by ikill240c
 
     private @Nullable Movable blocking_movable;
     private int blocker_x;
@@ -31,9 +43,17 @@ public final class WalkBehaviour implements Behaviour {
     private PathTracker.State state;
 
     public WalkBehaviour(@NonNull Unit unit, @NonNull TrackerAlgorithm tracker_algorithm, boolean scan_attack) {
+        this(unit, tracker_algorithm, scan_attack, HuntController::new); //added by ikill240c
+    }
+
+    // Overload taking an explicit HuntControllerFactory - see that interface's own comment for why
+    // a caller would want one. //added by ikill240c
+    public WalkBehaviour(@NonNull Unit unit, @NonNull TrackerAlgorithm tracker_algorithm, boolean scan_attack, //added by ikill240c
+            @NonNull HuntControllerFactory hunt_controller_factory) {
         this.unit = unit;
         this.tracker_algorithm = tracker_algorithm;
         this.scan_attack = scan_attack;
+        this.hunt_controller_factory = hunt_controller_factory; //added by ikill240c
         scan_filter = new AttackScanFilter(unit.getOwner(), AttackScanFilter.UNIT_RANGE);
         retry_delay = WAIT_RETRY_DELAY;
         unit.getTracker().setTarget(tracker_algorithm);
@@ -41,6 +61,13 @@ public final class WalkBehaviour implements Behaviour {
 
     public WalkBehaviour(@NonNull Unit unit, @NonNull Target t, float range, boolean scan_attack) {
         this(unit, new TargetTrackerAlgorithm(unit.getUnitGrid(), range, t), scan_attack);
+    }
+
+    // Overload taking an explicit HuntControllerFactory - see that interface's own comment for why
+    // a caller would want one. //added by ikill240c
+    public WalkBehaviour(@NonNull Unit unit, @NonNull Target t, float range, boolean scan_attack, //added by ikill240c
+            @NonNull HuntControllerFactory hunt_controller_factory) {
+        this(unit, new TargetTrackerAlgorithm(unit.getUnitGrid(), range, t), scan_attack, hunt_controller_factory); //added by ikill240c
     }
 
     @Override
@@ -112,7 +139,7 @@ public final class WalkBehaviour implements Behaviour {
             Selectable<?> s = scan_filter.removeTarget();
             if (s != null) {
                 unit.getCurrentController().resetGiveUpCounters();
-                unit.pushController(new HuntController(unit, s));
+                unit.pushController(hunt_controller_factory.create(unit, s)); //added by ikill240c - was hardcoded new HuntController(unit, s); see HuntControllerFactory's own comment
             }
         }
     }

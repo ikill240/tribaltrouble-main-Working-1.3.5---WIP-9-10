@@ -50,6 +50,12 @@ public class TargetDelegate extends ControllableCameraDelegate {
             }
         }
 
+        // See ControllableCameraDelegate.handleMapModeWhileTransient()'s own comment - without
+        // this, Space/Numpad5 did nothing at all while waiting to click a move/attack/guard/
+        // patrol destination, and the still-active target-picking mode would then misinterpret
+        // the player's next click as committing to that order. //added by ikill240c
+        if (handleMapModeWhileTransient(event)) return; //added by ikill240c
+
         super.handleInput(event);
         if (event.isConsumed()) return;
     }

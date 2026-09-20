@@ -20,6 +20,7 @@ import com.oddlabs.tt.form.WarningForm;
 import com.oddlabs.tt.global.Globals;
 import com.oddlabs.tt.global.GlobalsInit;
 import com.oddlabs.tt.global.Settings;
+import org.joml.Vector4fc; //added by ikill240c
 import com.oddlabs.tt.gui.GUI;
 import com.oddlabs.tt.gui.GUIRoot;
 import com.oddlabs.tt.gui.Languages;
@@ -717,12 +718,17 @@ public final class Renderer implements AutoCloseable {
         MatrixStack projectionStack = new MatrixStack();
         WorldParameters world_params = new WorldParameters(Game.GAMESPEED_NORMAL, "", 2, Player.DEFAULT_MAX_UNIT_COUNT);
         PlayerInfo[] players = new PlayerInfo[]{player_info};
-        WorldInfo world_info = generator.generate(players.length, world_params.getInitialUnitCount(), 0f);
+        WorldInfo world_info = generator.generate(players.length, world_params.getInitialUnitCount(), 0f, false,
+                null); //added by ikill240c - decorative single-player background world, no real teams to group
         FogInfo fog_info = generator.getFogInfo();
         RenderQueues render_queues = new RenderQueues();
         LandscapeResources landscape_resources = World.loadCommon(render_queues);
+        // This is the decorative main-menu background world (a single dummy player), so any color
+        // works - using team_colours[0] to match what the old always-fresh iterator would have
+        // produced for a single-element array anyway. //added by ikill240c
+        Vector4fc[] player_colors = new Vector4fc[]{Settings.getSettings().team_colours[0]};
         World world = World.newWorld(AudioManager.getManager(), landscape_resources, null, new NotificationListener() {
-        }, world_params, world_info, generator.getTerrainType(), players, fog_info);
+        }, world_params, world_info, generator.getTerrainType(), players, player_colors, fog_info);
         AnimationManager manager = new AnimationManager();
         LandscapeRenderer landscape_renderer = new LandscapeRenderer(world, world_info, manager);
         Player local_player = world.getPlayers()[0];

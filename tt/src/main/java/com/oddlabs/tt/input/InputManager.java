@@ -141,6 +141,24 @@ public final class InputManager {
         def(GameAction.ARMY_CREATE_3, Key.KEY_3, Modifier.CONTROL);
         def(GameAction.ARMY_CREATE_4, Key.KEY_4, Modifier.CONTROL);
         def(GameAction.ARMY_CREATE_5, Key.KEY_5, Modifier.CONTROL);
+
+        // Formations - Alt+1 through Alt+5, a genuinely free combination (Alt is otherwise only used
+        // with the arrow keys for camera pitch/rotate). //added by ikill240c
+        def(GameAction.FORMATION_SQUARE, Key.KEY_1, Modifier.ALT); //added by ikill240c
+        def(GameAction.FORMATION_DIAMOND, Key.KEY_2, Modifier.ALT); //added by ikill240c
+        def(GameAction.FORMATION_CIRCLE, Key.KEY_3, Modifier.ALT); //added by ikill240c
+        def(GameAction.FORMATION_TIGHT, Key.KEY_4, Modifier.ALT); //added by ikill240c
+        def(GameAction.FORMATION_LOOSE, Key.KEY_5, Modifier.ALT); //added by ikill240c
+        def(GameAction.FORMATION_BY_TYPE, Key.KEY_6, Modifier.ALT); //added by ikill240c
+        def(GameAction.FORMATION_DEFAULT, Key.KEY_7, Modifier.ALT); //added by ikill240c
+        def(GameAction.FORMATION_STAR, Key.KEY_8, Modifier.ALT); //added by ikill240c
+        // Y for Stand Ground - bare S is already bound three times over (UNIT_BUILD_SHIP,
+        // MAGIC_1, DEBUG_TOGGLE_DETAIL), so Y (genuinely unbound anywhere in this file) was used
+        // instead. H for Guard, K for Patrol - both otherwise unbound (bare G and P are already
+        // taken by UNIT_GATHER and TRAIN_PEON respectively). //added by ikill240c
+        def(GameAction.STAND_GROUND, Key.Y); //added by ikill240c
+        def(GameAction.UNIT_GUARD, Key.H); //added by ikill240c
+        def(GameAction.UNIT_PATROL, Key.K); //added by ikill240c
         def(GameAction.ARMY_CREATE_6, Key.KEY_6, Modifier.CONTROL);
         def(GameAction.ARMY_CREATE_7, Key.KEY_7, Modifier.CONTROL);
         def(GameAction.ARMY_CREATE_8, Key.KEY_8, Modifier.CONTROL);

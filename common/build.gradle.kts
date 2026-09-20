@@ -85,3 +85,14 @@ val generateBuildInfo by tasks.registering {
 sourceSets.main {
     java.srcDir(generateBuildInfo)
 }
+
+// Launches the standalone map editor (com.oddlabs.mapeditor.MapEditor) directly - this was
+// previously only reachable by manually building and running the classpath yourself, since the
+// java-library plugin doesn't provide a run task the way the application plugin would.
+// //added by ikill240c
+tasks.register<JavaExec>("runMapEditor") { //added by ikill240c
+    group = "application" //added by ikill240c
+    description = "Launches the standalone Tribal Trouble map editor" //added by ikill240c
+    mainClass.set("com.oddlabs.mapeditor.MapEditor") //added by ikill240c
+    classpath = sourceSets.main.get().runtimeClasspath //added by ikill240c
+}

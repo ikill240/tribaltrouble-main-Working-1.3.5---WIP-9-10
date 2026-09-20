@@ -13,7 +13,7 @@ public final class StandardModeRules implements GameModeRules {
 
     // i18n key from TerrainMenu.properties (existing rated_game / rated_game_tip translations in all 5 locales)
     private static final @NonNull List<@NonNull GameModeOption> OPTIONS = List.of(
-            new GameModeOption(OPTION_RATED, GameModeOption.Type.BOOL, Boolean.FALSE, "rated_game"));
+            new GameModeOption(OPTION_RATED, GameModeOption.Type.BOOL, false, "rated_game")); //added by ikill240c 2026-09-10 - Boolean.FALSE and the autoboxed literal false are the same cached object; simplified per errorprone warning
 
     @Override
     public @NonNull List<@NonNull GameModeOption> getOptions() {

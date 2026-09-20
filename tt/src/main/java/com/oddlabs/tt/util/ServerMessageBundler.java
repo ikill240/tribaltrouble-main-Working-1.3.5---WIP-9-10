@@ -19,6 +19,7 @@ public final class ServerMessageBundler {
             case Game.SIZE_MEDIUM -> "size_medium";
             case Game.SIZE_LARGE -> "size_large";
             case Game.SIZE_ENORMOUS -> "size_enormous";
+            case Game.SIZE_UNREAL -> "size_unreal"; //added by ikill240c
             case Game.SIZE_ARCHIPELAGO -> "size_archipelago";
             default -> throw new IllegalArgumentException("unexpected size: " + index);
         });

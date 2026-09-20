@@ -13,7 +13,13 @@ public interface MatchmakingServerInterface {
 
     int MATCHMAKING_SERVER_PORT = 33214;
 
-    int MAX_PLAYERS = 12;
+    // Every consumer of this constant (lobby UI slot arrays in TerrainMenu, the default color
+    // palette in Settings.generateDefaultColours(), etc.) was already written to size itself off
+    // this value dynamically rather than hardcoding 12, so raising it needed no changes anywhere
+    // else in those systems. player_slot is transmitted as a short across the network (see
+    // GameClientInterface.setWorldGeneratorAndPlayerSlot), which comfortably holds up to 32767,
+    // so this is nowhere close to that ceiling. //added by ikill240c
+    int MAX_PLAYERS = 80; //added by ikill240c - was 32, raised per explicit request; team_colours auto-scales to this (see Settings.generateDefaultColours())
     int MIN_PLAYERS = 1;
     int MIN_ROOM_NAME_LENGTH = 1;
     int MAX_ROOM_NAME_LENGTH = 20;

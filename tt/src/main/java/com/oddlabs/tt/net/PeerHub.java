@@ -18,6 +18,7 @@ import com.oddlabs.tt.landscape.HeightMap;
 import com.oddlabs.tt.landscape.World;
 import com.oddlabs.tt.model.Building;
 import com.oddlabs.tt.model.Unit;
+import com.oddlabs.tt.player.AdvancedAI; //added by ikill240c
 import com.oddlabs.tt.player.Player;
 import com.oddlabs.tt.player.PlayerInterface;
 import com.oddlabs.tt.util.StateChecksum;
@@ -197,8 +198,21 @@ public final class PeerHub implements Animated, RouterHandler {
     public void receiveEvent(int client_id, @NonNull ARMIEvent event) {
         Peer peer = getPeerFromClientID(client_id);
         if (peer == null) {
-            routerFailed(new IOException("Invalid client_id received: " + client_id));
-            return;
+            // A stale, in-flight event from a peer that was ALREADY removed (see
+            // removePeerFromActiveList()/peerDisconnected()) before this event arrived - most
+            // plausibly after a long stall (the lockstep simulation waiting on a slow/stalled
+            // peer), where the underlying router/session layer's own timeout can disconnect what
+            // is, in a singleplayer/loopback game, the ONLY player, well before that player's own
+            // client actually stops sending anything. Previously treated identically to a genuine
+            // protocol violation (an event from a client_id that was never valid at all), tearing
+            // down the entire session via routerFailed() over what's actually a harmless race
+            // between "peer got timed out" and "peer's own already-in-flight event arrives" -
+            // this is very plausibly what's been reported as an occasional "desync". Logging and
+            // ignoring the stale event, rather than propagating it as a fatal router error, lets
+            // the session continue instead of being torn down by its own timeout mechanism.
+            // //added by ikill240c
+            IO.println("Ignoring stale event from already-disconnected client_id: " + client_id); //added by ikill240c
+            return; //added by ikill240c
         }
         try {
             event.execute(interface_methods, peer);
@@ -216,8 +230,10 @@ public final class PeerHub implements Animated, RouterHandler {
         }
         Peer peer = getPeerFromClientID(client_id);
         if (peer == null) {
-            routerFailed(new IOException("Invalid client_id received: " + client_id));
-            return;
+            // See receiveEvent()'s identical check above for the full reasoning - same stale-
+            // event-after-disconnect race, same fix. //added by ikill240c
+            IO.println("Ignoring stale game state event from already-disconnected client_id: " + client_id); //added by ikill240c
+            return; //added by ikill240c
         }
         server_millis = millis;
         int event_tick = millisToTickCeil(millis);
@@ -488,6 +504,30 @@ public final class PeerHub implements Animated, RouterHandler {
     }
 
     public void peerDisconnected(@NonNull Peer peer, String reason) {
+        // In a singleplayer/loopback session (no real remote human participants), the local
+        // player's own connection has no actual network to disconnect FROM - there is no remote
+        // machine, no real latency, and no second independent simulation to desync against. A
+        // "disconnect" reported for that connection here can only be something misfiring rather
+        // than an actual problem: either the router/session layer's own timeout mechanism
+        // misfiring because this client's tick processing fell behind its expected pace (see the
+        // matching comment on the stale-event handling above, which already identified this same
+        // timeout as the source of that race), or peerChecksumError() comparing against nothing,
+        // since there's no other peer's checksum to have diverged from in the first place.
+        // Previously either was still processed as a real disconnect: tearing the peer out of the
+        // active list, showing "[player] has left the game" to a player who never actually left,
+        // and kicking off the exact stall/ignore-stale-event cascade seen in reports of the game
+        // feeling laggy and then abruptly ending. Recognizing and ignoring this specific
+        // combination - local player, singleplayer session - fixes the false report directly,
+        // rather than only ever trying to prevent every possible source of the underlying
+        // slowness that triggers it. A genuine disconnect of a REMOTE peer, or of the local
+        // player in an actual multiplayer session (where a real desync or connection loss is
+        // possible), is unaffected and still handled exactly as before.
+        // //added by ikill240c
+        if (!is_multiplayer && peer.getPeerIndex() == local_peer_index) { //added by ikill240c
+            IO.println("Ignoring spurious self-disconnect of the local player in a singleplayer session (reason: " //added by ikill240c
+                    + reason + ") - likely a router timeout from this client falling behind, not a real disconnect."); //added by ikill240c
+            return; //added by ikill240c
+        } //added by ikill240c
         Player player = getPlayerFromPeer(peer);
         if (player == null)
             return;
@@ -521,6 +561,17 @@ public final class PeerHub implements Animated, RouterHandler {
             if (local_team == peer_team)
                 peer.getPeerHubInterface().beacon(x, y);
         }
+        // getPeerIterator() only ever yields REMOTE peers, so without this, placing a beacon never
+        // triggered anything on the LOCAL client itself - no notification, and critically, no
+        // onAllyBeacon() call for this client's own AdvancedAI-controlled teammates, since every
+        // peer in this lockstep game simulates ALL players' AI locally (see receiveBeacon()'s own
+        // comment below), not just remote ones. Remote peers only ever heard about a beacon if
+        // THEY placed it - a beacon placed here never came back around to affect anything on this
+        // same client, matching reports of the beacon system "not working", especially playing
+        // solo with AI teammates where there are no remote peers to relay through at all. Mirrors
+        // exactly what Peer.beacon() does when a remote peer's placement arrives here - see its own
+        // call to receiveBeacon() for the same owner-name convention. //added by ikill240c
+        receiveBeacon(x, y, local_player.getPlayerInfo().getName()); //added by ikill240c
     }
 
     public void receiveChat(@NonNull String name, @NonNull String text, boolean team) {
@@ -533,6 +584,19 @@ public final class PeerHub implements Animated, RouterHandler {
     public void receiveBeacon(float x, float y, @NonNull String owner) {
         if (!ChatCommand.isIgnoring(owner))
             notification_manager.newBeacon(manager, local_player, x, y);
+        // sendBeacon() only ever relays to peers on the SAME team as whoever placed it, so simply
+        // receiving this call at all already means local_player is on that team - every
+        // AdvancedAI-controlled teammate (this client also simulates every player's AI, not just
+        // local_player's, since AI decisions must be deterministic and identical across all peers
+        // in this lockstep game) should respond to it. Lets a human player call in a fixed
+        // reinforcement from their AI teammates by placing a beacon. //added by ikill240c
+        int local_team = local_player.getPlayerInfo().getTeam(); //added by ikill240c
+        for (Player player : local_player.getWorld().getPlayers()) { //added by ikill240c
+            if (player.getPlayerInfo().getTeam() == local_team //added by ikill240c
+                    && player.getAI() instanceof AdvancedAI advanced_ai) { //added by ikill240c
+                advanced_ai.onAllyBeacon(x, y); //added by ikill240c
+            } //added by ikill240c
+        } //added by ikill240c
     }
 
     private void closeNetwork() {

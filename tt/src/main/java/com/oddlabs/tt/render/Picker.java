@@ -16,6 +16,7 @@ import com.oddlabs.tt.model.Abilities;
 import com.oddlabs.tt.model.Action;
 import com.oddlabs.tt.model.Army;
 import com.oddlabs.tt.model.Building;
+import com.oddlabs.tt.model.MountUnitContainer; //added by ikill240c
 import com.oddlabs.tt.model.Unit;
 import com.oddlabs.tt.model.ModelToolTip;
 import com.oddlabs.tt.model.SceneryModel;
@@ -134,13 +135,22 @@ public final class Picker implements Updatable<TimerAnimation> {
             PlayerInterface player_interface,
             int x,
             int y) {
-        setupPicking(camera, x, y, PICK_SIZE, PICK_SIZE);
+        // Was missing the same getScale() (content/DPI scale factor) multiplication every other
+        // picking method in this class applies to its screen coordinates before calling
+        // setupPicking()/nearestLandscape() - see pickTarget() just below for the identical pattern
+        // it was missing. On any display where that scale isn't exactly 1.0 (e.g. Windows' common
+        // 125% scaling), every ship click landed at (x/scale, y/scale) relative to where it should
+        // have, growing worse the further the click was from screen center - matching reports of
+        // ship move-orders consistently landing left of and below the actual click point.
+        // //added by ikill240c
+        float scale = getScale(); //added by ikill240c
+        setupPicking(camera, x * scale, y * scale, PICK_SIZE, PICK_SIZE); //added by ikill240c
         pickObjects();
         Target target = getNearestPick(element_pick_list, Target.class);
         Selectable[] selection = selected_army.filter(Abilities.SAIL);
         if (target instanceof Unit || target instanceof Building) {
             player_interface.setSailingTarget(selection, target);
-        } else if (nearestLandscape(x, y)) {
+        } else if (nearestLandscape(Math.round(x * scale), Math.round(y * scale))) { //added by ikill240c
             UnitGrid grid = local_player.getWorld().getUnitGrid();
             int grid_x = UnitGrid.toGridCoordinate(patch_hit_x);
             int grid_y = UnitGrid.toGridCoordinate(patch_hit_y);
@@ -162,15 +172,14 @@ public final class Picker implements Updatable<TimerAnimation> {
         pickObjects();
         Target nearest_pickable = getNearestPick(element_pick_list, Target.class);
         Selectable<?>[] selection = selected_army.filter(Abilities.TARGET);
+        boolean aggressive = Settings.getSettings().aggressive_units; //added by ikill240c
         if (nearest_pickable != null) {
             if (!(nearest_pickable instanceof SceneryModel) || ((SceneryModel) nearest_pickable).isOccupying())
                 respond_manager.addResponder(nearest_pickable);
             if (queue) //added by ikill240c 2026-09-10 16:45
-                player_interface.queueTarget(selection, nearest_pickable, action, //added by ikill240c 2026-09-10 16:45
-                        Settings.getSettings().aggressive_units); //added by ikill240c 2026-09-10 16:45
-            else if (isNewSetTarget(selection, nearest_pickable, action, Settings.getSettings().aggressive_units))
-                player_interface.setTarget(selection, nearest_pickable, action,
-                        Settings.getSettings().aggressive_units);
+                player_interface.queueTarget(selection, nearest_pickable, action, aggressive); //added by ikill240c
+            else if (isNewSetTarget(selection, nearest_pickable, action, aggressive))
+                player_interface.setTarget(selection, nearest_pickable, action, aggressive);
         } else {
             pickResources();
             final TreeSupply supply = getNearestPick(tree_pick_list, Target.class);
@@ -179,19 +188,17 @@ public final class Picker implements Updatable<TimerAnimation> {
                 respond_manager.addResponder(supply, () -> supply.changeRespondingTrees(-1));
                 supply.changeRespondingTrees(1);
                 if (queue) //added by ikill240c 2026-09-10 16:45
-                    player_interface.queueTarget(selection, supply, action, Settings.getSettings().aggressive_units); //added by ikill240c 2026-09-10 16:45
-                else if (isNewSetTarget(selection, supply, action, Settings.getSettings().aggressive_units))
-                    player_interface.setTarget(selection, supply, action, Settings.getSettings().aggressive_units);
+                    player_interface.queueTarget(selection, supply, action, aggressive); //added by ikill240c
+                else if (isNewSetTarget(selection, supply, action, aggressive))
+                    player_interface.setTarget(selection, supply, action, aggressive);
             } else if (nearestLandscape(Math.round(x * scale), Math.round(y * scale))) {
                 new LandscapeTargetRespond(local_player.getWorld(), patch_hit_x, patch_hit_y);
                 int grid_x = UnitGrid.toGridCoordinate(patch_hit_x);
                 int grid_y = UnitGrid.toGridCoordinate(patch_hit_y);
                 if (queue) //added by ikill240c 2026-09-10 16:45
-                    player_interface.queueLandscapeTarget(selection, grid_x, grid_y, action, //added by ikill240c 2026-09-10 16:45
-                            Settings.getSettings().aggressive_units); //added by ikill240c 2026-09-10 16:45
-                else if (isNewLandscapeTarget(selection, grid_x, grid_y, action, Settings.getSettings().aggressive_units))
-                    player_interface.setLandscapeTarget(selection, grid_x, grid_y, action,
-                            Settings.getSettings().aggressive_units);
+                    player_interface.queueLandscapeTarget(selection, grid_x, grid_y, action, aggressive); //added by ikill240c
+                else if (isNewLandscapeTarget(selection, grid_x, grid_y, action, aggressive))
+                    player_interface.setLandscapeTarget(selection, grid_x, grid_y, action, aggressive);
             }
         }
     }
@@ -276,11 +283,41 @@ public final class Picker implements Updatable<TimerAnimation> {
             if (by_type && clicks > 1 && nearest instanceof Unit && !nearest.isDead()) { //added by ikill240c 2026-09-10 16:45
                 return pickAllOfSameType(camera, nearest); //added by ikill240c 2026-09-10 16:45
             } //added by ikill240c 2026-09-10 16:45
+            // Plain double-click (no shift needed) on a chieftain selects every chieftain belonging to
+            // the same player. Chieftains have neither Abilities.THROW nor Abilities.HARVEST, so
+            // without this they always fell through to selecting just themselves below, unlike
+            // warriors/peons which already get a broader same-ability selection. //added by ikill240c
+            if (clicks > 1 && nearest instanceof Unit && !nearest.isDead()
+                    && nearest.getAbilities().hasAbilities(Abilities.MAGIC)) {
+                return pickAllOfSameType(camera, nearest);
+            }
+            // Plain double-click on a tower with a unit currently mounted in it unmounts that
+            // unit, taking priority over "select all buildings of this type" below - the general
+            // select-all-buildings behavior for towers still applies to an EMPTY tower (nothing to
+            // unmount), only diverging when there's actually a mounted unit to act on. Returns
+            // just the one tower (not expanded to every tower like the branch below) so
+            // SelectionDelegate can detect this specific case and issue the exitTower command
+            // instead of a normal selection change - ownership isn't checked here (Picker doesn't
+            // check ownership for the building branch below either), that happens in
+            // SelectionDelegate before any command is issued. //added by ikill240c
+            if (clicks > 1 && nearest instanceof Building tower && !tower.isDead()
+                    && tower.getUnitContainer() instanceof MountUnitContainer mount_container
+                    && mount_container.getUnit() != null) {
+                return new Selectable<?>[]{tower};
+            }
+            // Plain double-click (no shift needed) on a building selects every building of the same
+            // template belonging to the same player (e.g. every Quarters, every Tower). Buildings
+            // previously had no double-click-select-all behavior at all - the by_type branch above
+            // explicitly excludes them (nearest instanceof Unit), and they have neither THROW nor
+            // HARVEST abilities to fall into the branches below either. //added by ikill240c
+            if (clicks > 1 && nearest instanceof Building && !nearest.isDead()) {
+                return pickAllOfSameBuildingType(camera, nearest);
+            }
             if (clicks > 1) {
                 if (nearest.getAbilities().hasAbilities(Abilities.THROW)) {
-                    return pickAll(camera, Abilities.THROW, nearest.getIslandId());
+                    return pickAll(camera, Abilities.THROW, nearest.getIslandId(), nearest); //added by ikill240c - now also filters by nearest's owner; see pickAll()'s own comment
                 } else if (nearest.getAbilities().hasAbilities(Abilities.HARVEST)) {
-                    return pickAll(camera, Abilities.HARVEST, nearest.getIslandId());
+                    return pickAll(camera, Abilities.HARVEST, nearest.getIslandId(), nearest); //added by ikill240c
                 } else {
                     return Selectable.newArray(nearest);
                 }
@@ -290,6 +327,24 @@ public final class Picker implements Updatable<TimerAnimation> {
         } else {
             return Selectable.newArray(0);
         }
+    }
+
+    // Same matching approach as isSameType() below, but for buildings: same template, same owner, same
+    // island - no job-splitting needed since buildings don't have peon-style jobs. //added by ikill240c
+    private @NonNull Selectable<?> @NonNull [] pickAllOfSameBuildingType(@NonNull CameraState camera,
+            @NonNull Selectable<?> reference) {
+        Selectable<?>[] complete_list = pickBoxed(camera, 0, 0, gui_root.getWidth() - 1, gui_root.getHeight() - 1, 1,
+                false);
+        int island = reference.getIslandId();
+        List<Selectable<?>> matches = new ArrayList<>();
+        for (Selectable<?> s : complete_list) {
+            if (s != null && !s.isDead() && s instanceof Building && s.getIslandId() == island
+                    && s.getOwnerNoCheck() == reference.getOwnerNoCheck() && s.getTemplate() == reference.getTemplate())
+                matches.add(s);
+        }
+        if (matches.isEmpty())
+            return Selectable.newArray(reference);
+        return matches.toArray(Selectable::newArray);
     }
 
     private @NonNull Selectable<?> @NonNull [] createBoxedPick() {
@@ -332,11 +387,24 @@ public final class Picker implements Updatable<TimerAnimation> {
         return other.getPrimaryController().getKey().equals(reference.getPrimaryController().getKey()); //added by ikill240c 2026-09-10 16:45
     } //added by ikill240c 2026-09-10 16:45
 
-    private @NonNull Selectable<?> @NonNull [] pickAll(@NonNull CameraState camera, int ability_filter, int island) {
+    // Was filtered only by ability + island, with no ownership check at all - a plain double-click
+    // on the local player's own warrior (this is the common, no-shift double-click path, distinct
+    // from pickAllOfSameType()'s shift+double-click-by-exact-type, which already DID filter by
+    // owner) would select every unit with the same ability on the island regardless of owner,
+    // including an ally's units once those became selectable at all (see the ally-unit selection
+    // support). Per an explicit request that a plain click or double-click on your own units
+    // should never also grab an ally's, this now filters to the SAME owner as the unit that was
+    // actually double-clicked (reference) - so double-clicking your own warrior selects only your
+    // own warriors, while double-clicking one of an ally's warriors (now itself selectable)
+    // correctly selects only that ally's warriors of the same type, never a mix of both.
+    // //added by ikill240c
+    private @NonNull Selectable<?> @NonNull [] pickAll(@NonNull CameraState camera, int ability_filter, int island, //added by ikill240c
+            @NonNull Selectable<?> reference) { //added by ikill240c
         Selectable<?>[] complete_list = pickBoxed(camera, 0, 0, gui_root.getWidth() - 1, gui_root.getHeight() - 1, 2,
                 false); //added by ikill240c 2026-09-10 16:45
         return Arrays.stream(complete_list).filter(s -> s.getAbilities().hasAbilities(ability_filter)
-                && s.getIslandId() == island).toArray(
+                && s.getIslandId() == island
+                && s.getOwnerNoCheck() == reference.getOwnerNoCheck()).toArray( //added by ikill240c
                         Selectable::newArray);
     }
 

@@ -75,6 +75,9 @@ public final class VikingIsland6 extends Island {
 
     @Override
     protected void start() {
+        // Campaign progression gate: Convert unavailable to Vikings until island 8.
+        // Chiefs Courage already unlocked by this island (unlocks at island 6). //added by ikill240c
+        getViewer().getLocalPlayer().enableMagic(RacesResources.INDEX_MAGIC_CONVERT, false); //added by ikill240c
         Runnable runnable;
         final Player local_player = getViewer().getLocalPlayer();
         final Player stranded = getViewer().getWorld().getPlayers()[1];

@@ -121,6 +121,21 @@ public enum GameAction {
     MAGIC_2,
     MAGIC_3,//added by ikill240
 
+    // Formations //added by ikill240c
+    FORMATION_SQUARE, //added by ikill240c
+    FORMATION_DIAMOND, //added by ikill240c
+    FORMATION_CIRCLE, //added by ikill240c
+    FORMATION_TIGHT, //added by ikill240c
+    FORMATION_LOOSE, //added by ikill240c
+    FORMATION_BY_TYPE, //added by ikill240c
+    FORMATION_DEFAULT, //added by ikill240c
+    FORMATION_STAR, //added by ikill240c
+
+    // Unit stance commands //added by ikill240c
+    STAND_GROUND, //added by ikill240c
+    UNIT_GUARD, //added by ikill240c
+    UNIT_PATROL, //added by ikill240c
+
     // Misc
     GAME_SPEED_UP,
     GAME_SPEED_DOWN,

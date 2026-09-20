@@ -77,6 +77,9 @@ public final class NativeIsland4 extends Island {
 
     @Override
     protected void start() {
+        // Campaign progression gate: Chiefs Courage unavailable to Natives until island 5.
+        // Convert already unlocked by this island (unlocks at island 2). //added by ikill240c
+        getViewer().getLocalPlayer().enableChiefsCourage(false); //added by ikill240c
         alive = true;
         counter.start(getViewer().getWorld().getAnimationManagerGameTime());
         counter.setPos(0, 0);

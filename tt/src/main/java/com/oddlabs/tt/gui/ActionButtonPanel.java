@@ -75,6 +75,8 @@ public final class ActionButtonPanel extends GUIObject implements Animated {
     //	private boolean tower_exit_button_disabled;
     private final @NonNull NonFocusIconButton move_button;
     private final @NonNull NonFocusIconButton attack_button;
+    private final @NonNull NonFocusIconButton guard_button; //added by ikill240c
+    private final @NonNull NonFocusIconButton patrol_button; //added by ikill240c
     private final @NonNull NonFocusIconButton gather_repair_button;
     private final @NonNull NonFocusIconButton quarters_button;
     //	private boolean quarters_button_disabled;
@@ -170,7 +172,12 @@ public final class ActionButtonPanel extends GUIObject implements Animated {
         Skin skin = Skin.getSkin();
         GUIIcons icons = GUIIcons.getIcons();
         String widest_char = new String(Character.toChars(skin.getEditFont().getWidestCodepoint("0123456789")));
-        int label_width = skin.getEditFont().getWidth(widest_char + widest_char + widest_char);
+        // Was 3 digits (max 999) - stock/count values here (armory resource counts especially) can
+        // comfortably run into the thousands in a long game, and a 3-digit field either truncates
+        // or overlaps neighboring UI once a count crosses 999. Widened to 5 digits (max 99999),
+        // generous headroom without being so wide it risks crowding the rest of this panel.
+        // //added by ikill240c
+        int label_width = skin.getEditFont().getWidth(widest_char.repeat(5)); //added by ikill240c
 
         move_button = new NonFocusIconButton(race_icons.moveIcon(), GameAction.UNIT_MOVE,
                 () -> i18n("move_tip", getBinding(GameAction.UNIT_MOVE)));
@@ -184,8 +191,27 @@ public final class ActionButtonPanel extends GUIObject implements Animated {
         unit_group.addChild(attack_button);
         attack_button.addMouseClickListener((_, _, _, _) -> pushDelegate(new TargetDelegate(viewer, camera,
                 Action.ATTACK)));
+        // Reuse the attack icon for now (per explicit instruction) rather than inventing/guessing
+        // at new icon art this session has no way to create - swap race_icons.attackIcon() for
+        // dedicated guard/patrol icons whenever those exist. Both gated the same way move/attack
+        // are (canAttack() - a unit with nothing to guard/patrol with shouldn't show these as
+        // available either). //added by ikill240c
+        guard_button = new NonFocusIconButton(race_icons.attackIcon(), GameAction.UNIT_GUARD, //added by ikill240c
+                () -> i18n("guard_tip", getBinding(GameAction.UNIT_GUARD))); //added by ikill240c
+        guard_button.setIconDisabler(() -> !viewer.getLocalPlayer().canAttack()); //added by ikill240c
+        unit_group.addChild(guard_button); //added by ikill240c
+        guard_button.addMouseClickListener((_, _, _, _) -> pushDelegate(new TargetDelegate(viewer, camera, //added by ikill240c
+                Action.GUARD))); //added by ikill240c
+        patrol_button = new NonFocusIconButton(race_icons.attackIcon(), GameAction.UNIT_PATROL, //added by ikill240c
+                () -> i18n("patrol_tip", getBinding(GameAction.UNIT_PATROL))); //added by ikill240c
+        patrol_button.setIconDisabler(() -> !viewer.getLocalPlayer().canAttack()); //added by ikill240c
+        unit_group.addChild(patrol_button); //added by ikill240c
+        patrol_button.addMouseClickListener((_, _, _, _) -> pushDelegate(new TargetDelegate(viewer, camera, //added by ikill240c
+                Action.PATROL))); //added by ikill240c
         move_button.place();
         attack_button.place(move_button, Placement.BOTTOM_MID);
+        guard_button.place(attack_button, Placement.BOTTOM_MID); //added by ikill240c
+        patrol_button.place(guard_button, Placement.BOTTOM_MID); //added by ikill240c
         unit_group.compileCanvas(GROUP_LEFT_OFFSET, 0, GROUP_RIGHT_OFFSET, GROUP_BOTTOM_OFFSET);
 
         gather_repair_button = new NonFocusIconButton(race_icons.gatherRepairIcon(), GameAction.UNIT_GATHER,
@@ -560,20 +586,34 @@ public final class ActionButtonPanel extends GUIObject implements Animated {
                 addChild(chieftain_group);
                 updateGroups();
                 Player player = viewer.getLocalPlayer();
+                // A converted chieftain casts using its OWN original race's spells rather than the
+                // recipient player's (see Unit.getMagicRaceOverride()/doMagic()) - previously the
+                // icons/tooltips on these buttons were fixed to the player's own race regardless,
+                // so a converted chief's magic worked correctly but the UI showed the wrong spells
+                // entirely (wrong icon, wrong tooltip, and a real risk of the player expecting one
+                // spell and getting another). Button ENABLEMENT (canDoMagic, gated by the
+                // recipient's own campaign progress) is intentionally unaffected - only which
+                // icons/tooltips are displayed changes here. //added by ikill240c
+                RaceIcons chieftain_icons = current_chieftain.getMagicRaceOverride() >= 0 //added by ikill240c
+                        ? viewer.getWorld().getRacesResources().getRace(current_chieftain.getMagicRaceOverride()).getIcons() //added by ikill240c
+                        : player.getRace().getIcons(); //added by ikill240c
                 if (player.canDoMagic(0)) { //added by ikill240
                     magic1_button.setUnit(current_chieftain);
+                    magic1_button.setIcon(chieftain_icons.magic1Icon()); //added by ikill240c
                     magic1_button.setIconDisabler(() -> !current_chieftain.canDoMagic(0));
                     chieftain_group.addChild(magic1_button);
                 } else
                     magic1_button.remove();
                 if (player.canDoMagic(1)) {
                     magic2_button.setUnit(current_chieftain);
+                    magic2_button.setIcon(chieftain_icons.magic2Icon()); //added by ikill240c
                     magic2_button.setIconDisabler(() -> !current_chieftain.canDoMagic(1));
                     chieftain_group.addChild(magic2_button);
                 } else
                     magic2_button.remove();
                 if (player.canDoMagic(2)) {
                     magic3_button.setUnit(current_chieftain);
+                    magic3_button.setIcon(chieftain_icons.magic3Icon()); //added by ikill240c
                     magic3_button.setIconDisabler(() -> !current_chieftain.canDoMagic(2));
                     chieftain_group.addChild(magic3_button);
                 } else
@@ -858,6 +898,15 @@ public final class ActionButtonPanel extends GUIObject implements Animated {
                     } else if (current_tower) {
                         activate(event, tower_attack_button);
                     }
+                } else if (current_unit && event.consumeAction(GameAction.UNIT_GUARD)) { //added by ikill240c
+                    // A real Guard button now exists (reusing the attack icon - see its own
+                    // construction comment) - activate() routes through it the same way UNIT_ATTACK
+                    // routes through attack_button above, so the keyboard shortcut respects the
+                    // button's own disabled state (!canAttack()) instead of bypassing it via a
+                    // direct pushDelegate() call. //added by ikill240c
+                    activate(event, guard_button); //added by ikill240c
+                } else if (current_unit && event.consumeAction(GameAction.UNIT_PATROL)) { //added by ikill240c
+                    activate(event, patrol_button); //added by ikill240c
                 } else if ((current_unit || current_armory || current_ship) && (event.consumeAction(
                         GameAction.UNIT_GATHER)
                         || event.consumeAction(GameAction.PROD_HARVEST))) {

@@ -79,6 +79,11 @@ public final class VikingIsland0 extends Island {
 
     @Override
     protected void start() {
+        // Campaign progression gate: Convert unavailable to Vikings until island 8; Chiefs
+        // Courage unavailable until island 6. Same enable/disable pattern as enableChieftains().
+        // //added by ikill240c
+        getViewer().getLocalPlayer().enableMagic(RacesResources.INDEX_MAGIC_CONVERT, false); //added by ikill240c
+        getViewer().getLocalPlayer().enableChiefsCourage(false); //added by ikill240c
         final Player local_player = getViewer().getLocalPlayer();
         final Player chieftain = getViewer().getWorld().getPlayers()[1];
         final Player enemy = getViewer().getWorld().getPlayers()[2];

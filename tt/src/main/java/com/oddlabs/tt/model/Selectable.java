@@ -39,6 +39,44 @@ public abstract class Selectable<T extends Template> extends Model implements Ta
     private int grid_x;
     private int grid_y;
     private int layer;
+    // Set whenever a player OTHER than this Selectable's own owner issues it a direct command (see
+    // Player.setTarget()/setLandscapeTarget()/queueTarget()/queueLandscapeTarget() for where this
+    // gets set) - lets an AI whose unit or building was just given an order by a human teammate
+    // (via the ally-building/ally-unit selection support) recognize that and hold off reassigning
+    // it for a while, rather than reclaiming it the instant it goes idle and effectively fighting
+    // the human's own command. -1 means never overridden. A world-tick value (not wall-clock time),
+    // matching every other tick-based cooldown in this codebase, so it stays consistent across
+    // peers in this lockstep game. //added by ikill240c
+    private int human_override_until_tick = -1; //added by ikill240c
+
+    public int getHumanOverrideUntilTick() { //added by ikill240c
+        return human_override_until_tick; //added by ikill240c
+    } //added by ikill240c
+
+    public void setHumanOverrideUntilTick(int tick) { //added by ikill240c
+        human_override_until_tick = tick; //added by ikill240c
+    } //added by ikill240c
+
+    // Was a single field on Player, applying to every future order for every unit that player
+    // controlled regardless of which units were actually selected when a formation shortcut was
+    // pressed - so choosing DIAMOND for one attack group would silently also apply to a
+    // completely different group's next order, unless yet another formation was chosen for them
+    // first. Moved to live per-Selectable instead: Player.setFormation() now sets this directly on
+    // each unit in the CURRENT SELECTION at the time the shortcut is pressed, and
+    // computeFormationTargets() reads it back from whichever units are actually part of the order
+    // being issued (see that method's own comment for how it resolves a formation when a
+    // selection's units don't all agree). null means "no formation ever explicitly chosen for this
+    // unit" - falls back to Formation.LOOSE, the same default the old player-wide field started
+    // at. //added by ikill240c
+    private com.oddlabs.tt.player.@Nullable Formation formation = null; //added by ikill240c
+
+    public com.oddlabs.tt.player.@Nullable Formation getFormation() { //added by ikill240c
+        return formation; //added by ikill240c
+    } //added by ikill240c
+
+    public void setFormation(com.oddlabs.tt.player.@Nullable Formation formation) { //added by ikill240c
+        this.formation = formation; //added by ikill240c
+    } //added by ikill240c
 
     protected Selectable(@NonNull Player owner, @NonNull T template) {
         super(owner.getWorld());
@@ -90,6 +128,13 @@ public abstract class Selectable<T extends Template> extends Model implements Ta
                 && last != Behaviour.State.UNINTERRUPTIBLE //added by ikill240c 2026-09-10 16:45
                 && !(this instanceof Unit unit && unit.isMounted())) { //added by ikill240c 2026-09-10 16:45
             startNextQueuedOrder(); //added by ikill240c 2026-09-10 16:45
+            // Starting the order can consume this unit synchronously (e.g. it immediately walks
+            // into a worker building and is absorbed via WorkerUnitContainer.enter() ->
+            // removeNow()). That clears current_behaviour without setting a new one, so bail out
+            // before trying to animate a behaviour that no longer exists on a now-dead unit. //fix 2026-09-11
+            if (isDead()) { //fix 2026-09-11
+                return; //fix 2026-09-11
+            } //fix 2026-09-11
         } //added by ikill240c 2026-09-10 16:45
         last = current_behaviour.animate(t);
         switch (last) {

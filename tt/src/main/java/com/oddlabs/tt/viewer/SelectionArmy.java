@@ -43,7 +43,18 @@ public final class SelectionArmy extends Army {
         chieftain = null;
         building = null;
         for (Selectable<?> s : getSet()) {
-            if (s.getOwner() != local_player)
+            // Was owner != local_player skipping everything not the local player's own - now also
+            // accepts anything owned by an ally (SelectionDelegate is the only thing that can
+            // actually get one into this Army in the first place, per its own comment on why - see
+            // there for the full reasoning), so an ally's selected building OR unit still populates
+            // `building`/`num_units`/`chieftain` here and drives ActionButtonPanel's controls,
+            // exactly as the local player's own would. Originally scoped to buildings only; widened
+            // to any ally-owned Selectable once unit control was added too, matching
+            // Player.isValid()'s own non-enemy-owner acceptance on the engine side.
+            // //added by ikill240c
+            boolean is_own = s.getOwner() == local_player; //added by ikill240c
+            boolean is_ally = !local_player.isEnemy(s.getOwner()); //added by ikill240c
+            if (!is_own && !is_ally) //added by ikill240c
                 continue;
             Abilities abilities = s.getAbilities();
             if (abilities.hasAbilities(Abilities.BUILD))

@@ -4,7 +4,6 @@ import com.oddlabs.matchmaking.GameMode;
 import com.oddlabs.tt.animation.AnimationManager;
 import com.oddlabs.tt.event.LocalEventQueue;
 import com.oddlabs.tt.form.ProgressForm;
-import com.oddlabs.tt.global.Settings;
 import com.oddlabs.tt.model.AbstractElementNode;
 import com.oddlabs.tt.model.RacesResources;
 import com.oddlabs.tt.model.Supply;
@@ -25,14 +24,12 @@ import java.util.List;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 
-import java.util.Arrays;
-import java.util.Iterator;
 import java.util.Random;
 
 public final class World {
     public static final int GAMESPEED_DONTCARE = -2;
 
-    private static final float[] GAMESPEEDS = new float[]{0f, AnimationManager.ANIMATION_SECONDS_PER_TICK / 2, AnimationManager.ANIMATION_SECONDS_PER_TICK * 2f, AnimationManager.ANIMATION_SECONDS_PER_TICK * 5f, AnimationManager.ANIMATION_SECONDS_PER_TICK * 10 //0f /2 * 1.75 * 4
+    private static final float[] GAMESPEEDS = new float[]{0.0f, AnimationManager.ANIMATION_SECONDS_PER_TICK / 2, AnimationManager.ANIMATION_SECONDS_PER_TICK * 2f, AnimationManager.ANIMATION_SECONDS_PER_TICK * 3f, AnimationManager.ANIMATION_SECONDS_PER_TICK * 6f //0f /2 * 1.75 * 4
     };
 
     private final @NonNull HeightMap world;
@@ -46,6 +43,7 @@ public final class World {
     private final @NonNull String map_code; //added by ikill240c 2026-09-09 23:55
     // Maximum buildings a player can have. //added by ikill240c 2026-09-10 00:00
     private final int max_building_count; //added by ikill240c 2026-09-10 00:00
+    private final int koth_statue_count; //added by ikill240c
     // Number of units each player starts with. //added by ikill240c 2026-09-10 00:00
     private final int initial_unit_count; //added by ikill240c 2026-09-10 00:00
     // Maximum total chieftains a player can have. //added by ikill240 2026-09-09 20:49
@@ -61,6 +59,13 @@ public final class World {
     private final int max_concurrent_armories; //added by ikill240c 2026-09-09 23:40
     private final int num_resource_towers; //added by ikill240c 2026-09-09 23:40
     private final int max_concurrent_towers; //added by ikill240c 2026-09-09 23:40
+    private final float magic1_cost; //added by ikill240c
+    private final float magic2_cost; //added by ikill240c
+    private final float magic3_cost; //added by ikill240c
+    private final float building_health_multiplier; //added by ikill240c
+    private final float viking_chief_health_multiplier; //added by ikill240c
+    private final float native_chief_health_multiplier; //added by ikill240c
+    private final float unit_range_multiplier; //added by ikill240c
     private final @NonNull NotificationListener notification_listener;
 
     private final @NonNull Player @NonNull [] players;
@@ -93,10 +98,11 @@ public final class World {
             @NonNull LandscapeResources landscape_resources, @Nullable RacesResources races_resources,
             @NonNull NotificationListener notification_listener, @NonNull WorldParameters world_params,
             @NonNull WorldInfo world_info, Landscape.@NonNull TerrainType terrain,
-            @NonNull PlayerInfo @NonNull [] player_infos, @NonNull FogInfo fog) {
+            @NonNull PlayerInfo @NonNull [] player_infos, @NonNull Vector4fc @NonNull [] player_colors, //added by ikill240c
+            @NonNull FogInfo fog) {
         ProgressForm.progress();
         World world = new World(audio_implementation, landscape_resources, races_resources, notification_listener,
-                world_params, world_info, terrain, player_infos, fog);
+                world_params, world_info, terrain, player_infos, player_colors, fog); //added by ikill240c
         ProgressForm.progress();
         ProgressForm.progress(1 / 5f);
         ProgressForm.progress();
@@ -174,8 +180,16 @@ public final class World {
     }
 
     public void tick(float t) {
-        getAnimationManagerGameTime().runAnimations(
-                getSecondsPerTick() * t / AnimationManager.ANIMATION_SECONDS_PER_TICK);
+        // Speed-scaled simulated game-seconds for this tick - identical to what's passed into
+        // runAnimations() below (and from there into every Unit's doAnimate(), which is what decays
+        // Chiefs Courage buff durations). Reusing this same value for the cooldown tick keeps the
+        // cooldown and the buff's own duration consistent with each other under game-speed changes.
+        // //added by ikill240p 2026-09-14
+        float game_time_t = getSecondsPerTick() * t / AnimationManager.ANIMATION_SECONDS_PER_TICK; //added by ikill240p 2026-09-14
+        for (Player player : getPlayers()) { //added by ikill240p 2026-09-14 - advance each player's Chiefs Courage cooldown exactly once per world tick
+            player.tickChiefsCourageCooldown(game_time_t); //added by ikill240p 2026-09-14 - NOT done from Unit.doAnimate(), which runs once per unit per tick and would over-decrement a per-player resource
+        }
+        getAnimationManagerGameTime().runAnimations(game_time_t); //added by ikill240p 2026-09-14 - reuses game_time_t computed above instead of recomputing the same expression
         getAnimationManagerRealTime().runAnimations(t/*AnimationManager.ANIMATION_SECONDS_PER_TICK*/);
     }
 
@@ -187,6 +201,7 @@ public final class World {
             @Nullable RacesResources races_resources, @NonNull NotificationListener notification_listener,
             @NonNull WorldParameters world_params, @NonNull WorldInfo world_info,
             Landscape.@NonNull TerrainType terrain, @NonNull PlayerInfo @NonNull [] player_infos,
+            @NonNull Vector4fc @NonNull [] player_colors, //added by ikill240c
             @NonNull FogInfo fog) {
         IO.println(
                 "****************** Generating landscape at tick " + LocalEventQueue.getQueue().getHighPrecisionManager().getTick() + " ********************");
@@ -200,6 +215,7 @@ public final class World {
                 world_params.getInitialUnitCount()); //added by ikill240c 2026-09-10 00:00
         this.map_code = world_params.getMapcode(); //added by ikill240c 2026-09-09 23:55
         this.max_building_count = world_params.getMaxBuildingCount(); //added by ikill240c 2026-09-10 00:00
+        this.koth_statue_count = world_params.getKothStatueCount(); //added by ikill240c
         this.initial_unit_count = world_params.getInitialUnitCount(); //added by ikill240c 2026-09-10 00:00
         this.max_chieftains = world_params.getMaxChieftains(); //added by ikill240 2026-09-09 20:49
         this.max_chieftains_per_quarters = world_params.getMaxChieftainsPerQuarters(); //added by ikill240 2026-09-09 20:49
@@ -217,6 +233,13 @@ public final class World {
                 : rollMatchValue(SALT_NUM_RESOURCE_TOWERS, WorldParameters.MIN_RANDOM_RESOURCE_TOWERS, //added by ikill240c 2026-09-09 23:55
                         WorldParameters.MAX_RANDOM_RESOURCE_TOWERS); //added by ikill240c 2026-09-09 23:55
         this.max_concurrent_towers = world_params.getMaxConcurrentTowers(); //added by ikill240c 2026-09-09 23:40
+        this.magic1_cost = world_params.getMagic1Cost(); //added by ikill240c
+        this.magic2_cost = world_params.getMagic2Cost(); //added by ikill240c
+        this.magic3_cost = world_params.getMagic3Cost(); //added by ikill240c
+        this.building_health_multiplier = world_params.getBuildingHealthMultiplier(); //added by ikill240c
+        this.viking_chief_health_multiplier = world_params.getChiefHealthMultiplier(RacesResources.RACE_VIKINGS); //added by ikill240c
+        this.native_chief_health_multiplier = world_params.getChiefHealthMultiplier(RacesResources.RACE_NATIVES); //added by ikill240c
+        this.unit_range_multiplier = world_params.getUnitRangeMultiplier(); //added by ikill240c
         this.notification_listener = notification_listener;
         this.gamespeed = world_params.getInitialGameSpeed();
         this.map_size = world_params.getMapSize();
@@ -233,9 +256,22 @@ public final class World {
         animation_manager_real_time = new AnimationManager();
         random = new Random(42);
 
-        Iterator<Vector4fc> eachColor = Arrays.asList((Vector4fc[]) Settings.getSettings().team_colours).iterator();
-        players = Arrays.stream(player_infos).map(info -> new Player(this, info, eachColor.next())).toArray(
-                Player[]::new);
+        // Was `Iterator<Vector4fc> eachColor = ...team_colours...iterator(); ... eachColor.next()` -
+        // assigned colors purely by POSITION in player_infos. WorldStarter/ReplayWorldStarter compact
+        // out closed slots before player_infos ever reaches here, which shifts every later player's
+        // position - so closing one slot could silently reassign a completely different color to every
+        // player after it (e.g. "AI supposed to be red turns blue when the slot before it is closed").
+        // player_colors is now built by the caller using each PlayerSlot's ORIGINAL (pre-compaction)
+        // index, so it stays correct regardless of which slots are closed. //added by ikill240c
+        players = new Player[player_infos.length]; //added by ikill240c
+        for (int i = 0; i < player_infos.length; i++) { //added by ikill240c
+            players[i] = new Player(this, player_infos[i], player_colors[i]); //added by ikill240c
+            // Per-magic enable toggles, applied uniformly to every player in the match. //added by ikill240c
+            players[i].enableMagic(0, world_params.isMagic1Enabled()); //added by ikill240c
+            players[i].enableMagic(1, world_params.isMagic2Enabled()); //added by ikill240c
+            players[i].enableMagic(RacesResources.INDEX_MAGIC_CONVERT, world_params.isMagic3Enabled()); //added by ikill240c
+            players[i].enableChiefsCourage(world_params.isChiefsCourageEnabled()); //added by ikill240c
+        } //added by ikill240c
 
         long time_stop = System.currentTimeMillis();
         IO.println(
@@ -291,6 +327,12 @@ public final class World {
     // Returns the maximum buildings a single player can own. //added by ikill240c 2026-09-10 00:00
     public int getMaxBuildingCount() { //added by ikill240c 2026-09-10 00:00
         return max_building_count; //added by ikill240c 2026-09-10 00:00
+    }
+
+    // Returns how many statues King of the Island's capture objective uses this game.
+    // //added by ikill240c
+    public int getKothStatueCount() { //added by ikill240c
+        return koth_statue_count; //added by ikill240c
     }
 
     // Returns the number of units each player starts the match with. //added by ikill240c 2026-09-10 00:00
@@ -362,6 +404,37 @@ public final class World {
     // Max towers the AI builds concurrently. //added by ikill240c 2026-09-09 23:40
     public int getMaxConcurrentTowers() { //added by ikill240c 2026-09-09 23:40
         return max_concurrent_towers; //added by ikill240c 2026-09-09 23:40
+    }
+
+    public float getMagic1Cost() { //added by ikill240c
+        return magic1_cost;
+    }
+
+    public float getMagic2Cost() { //added by ikill240c
+        return magic2_cost;
+    }
+
+    public float getMagic3Cost() { //added by ikill240c
+        return magic3_cost;
+    }
+
+    public float getBuildingHealthMultiplier() { //added by ikill240c
+        return building_health_multiplier;
+    }
+
+    // Both race multipliers were already resolved once at construction time (see the constructor),
+    // so this just picks between the two stored results rather than re-branching on WorldParameters
+    // each call. //added by ikill240c
+    public float getChiefHealthMultiplier(int race_index) { //added by ikill240c
+        if (race_index == RacesResources.RACE_VIKINGS)
+            return viking_chief_health_multiplier;
+        if (race_index == RacesResources.RACE_NATIVES)
+            return native_chief_health_multiplier;
+        return 1f;
+    }
+
+    public float getUnitRangeMultiplier() { //added by ikill240c
+        return unit_range_multiplier;
     }
 
     public @NonNull NotificationListener getNotificationListener() {

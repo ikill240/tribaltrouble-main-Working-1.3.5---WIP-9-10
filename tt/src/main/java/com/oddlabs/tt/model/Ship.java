@@ -19,7 +19,6 @@ import com.oddlabs.tt.particle.LinearEmitter;
 import com.oddlabs.tt.particle.RandomVelocityEmitter;
 import com.oddlabs.tt.pathfinder.Movable;
 import com.oddlabs.tt.pathfinder.Occupant;
-import com.oddlabs.tt.pathfinder.StaticOccupant;
 import com.oddlabs.tt.pathfinder.PathTracker;
 import com.oddlabs.tt.pathfinder.UnitGrid;
 import com.oddlabs.tt.player.Player;
@@ -148,46 +147,64 @@ public class Ship extends Building implements Movable {
         float alpha = .6f;
     }
 
+    // Merged from boats_on_steam - extracted as a static helper (rather than the direction
+    // computation living only inline inside setInitialShipDirection() below) so
+    // doIsPlacingLegal() can also use the exact same "best gap between land and water" direction
+    // calculation during placement preview, before any actual Ship instance exists to call an
+    // instance method on. //added by ikill240c
+    private static float[] getInitDirection(UnitGrid grid, int x, int y) { //added by ikill240c
+        float[] ret = new float[2]; //added by ikill240c
+        // Clamp the sampling window to valid grid indices - was unclamped, so a ship near a map
+        // edge (x or y within 8 of the border) produced negative or out-of-range tmpx/tmpy values
+        // below, and UnitGrid.isWater() indexes straight into a raw array with no bounds check of
+        // its own, throwing ArrayIndexOutOfBoundsException outright. This mattered even for a ship
+        // that was never actually going to be placed there, since doIsPlacingLegal() (which calls
+        // this) runs during the placement PREVIEW scan across many candidate positions, edge ones
+        // included, not just on an actual, confirmed placement. //added by ikill240c
+        int grid_size = grid.getGridSize(); //added by ikill240c
+        int x0 = Math.max(0, x - 8); //added by ikill240c
+        int x1 = Math.min(grid_size, x0 + 16); //added by ikill240c
+        int y0 = Math.max(0, y - 8); //added by ikill240c
+        int y1 = Math.min(grid_size, y0 + 16); //added by ikill240c
+        int samples = 20; //added by ikill240c
+        int best_gap = 0; //added by ikill240c
+        double best_gap_dx = 0.0f; //added by ikill240c
+        double best_gap_dy = 0.0f; //added by ikill240c
+        double delta = Math.toRadians(360.0f / samples); //added by ikill240c
+        for (int i = 0; i < samples; i++) { //added by ikill240c
+            double angle = delta * i; //added by ikill240c
+            double cos = Math.cos(angle); //added by ikill240c
+            double sin = Math.sin(angle); //added by ikill240c
+            int weight_a = 0; //added by ikill240c
+            int weight_b = 0; //added by ikill240c
+            for (int tmpy = y0; tmpy < y1; tmpy++) { //added by ikill240c
+                for (int tmpx = x0; tmpx < x1; tmpx++) { //added by ikill240c
+                    int h = grid.isWater(tmpx, tmpy) ? 0 : 1; //added by ikill240c
+                    int dx = tmpx - x; //added by ikill240c
+                    int dy = tmpy - y; //added by ikill240c
+                    double cross = dx * sin - dy * cos; //added by ikill240c
+                    if (cross > 0) { //added by ikill240c
+                        weight_a += h; //added by ikill240c
+                    } else { //added by ikill240c
+                        weight_b += h; //added by ikill240c
+                    } //added by ikill240c
+                } //added by ikill240c
+            } //added by ikill240c
+            int gap = weight_b - weight_a; //added by ikill240c
+            if (i == 0 || gap < best_gap) { //added by ikill240c
+                best_gap = gap; //added by ikill240c
+                best_gap_dx = cos; //added by ikill240c
+                best_gap_dy = sin; //added by ikill240c
+            } //added by ikill240c
+        } //added by ikill240c
+        ret[0] = (float) best_gap_dy; //added by ikill240c
+        ret[1] = (float) -best_gap_dx; //added by ikill240c
+        return ret; //added by ikill240c
+    }
+
     public final void setInitialShipDirection() {
-        UnitGrid grid = getUnitGrid();
-        int cx = getGridX();
-        int x0 = cx - 8;
-        int x1 = x0 + 16;
-        int cy = getGridY();
-        int y0 = cy - 8;
-        int y1 = y0 + 16;
-        int samples = 20;
-        int best_gap = 0;
-        double best_gap_dx = 0.0f;
-        double best_gap_dy = 0.0f;
-        double delta = Math.toRadians(360.0f / samples);
-        for (int i = 0; i < samples; i++) {
-            double angle = delta * i;
-            double cos = Math.cos(angle);
-            double sin = Math.sin(angle);
-            int weight_a = 0;
-            int weight_b = 0;
-            for (int y = y0; y < y1; y++) {
-                for (int x = x0; x < x1; x++) {
-                    int h = grid.isWater(x, y) ? 0 : 1;
-                    int dx = x - cx;
-                    int dy = y - cy;
-                    double cross = dx * sin - dy * cos;
-                    if (cross > 0) {
-                        weight_a += h;
-                    } else {
-                        weight_b += h;
-                    }
-                }
-            }
-            int gap = weight_b - weight_a;
-            if (i == 0 || gap < best_gap) {
-                best_gap = gap;
-                best_gap_dx = cos;
-                best_gap_dy = sin;
-            }
-        }
-        setDirection((float) best_gap_dy, (float) -best_gap_dx);
+        float[] dir = getInitDirection(getUnitGrid(), getGridX(), getGridY()); //added by ikill240c - now delegates to the static helper above instead of duplicating this computation inline
+        setDirection(dir[0], dir[1]); //added by ikill240c
     }
 
     public final float getOffsetZ() {
@@ -596,26 +613,53 @@ public class Ship extends Building implements Movable {
         return getTemplate().getHitOffsetZ(getRenderLevel().ordinal());
     }
 
+    // Merged from boats_on_steam: previously used a crude axis-aligned square check that ignored
+    // the ship's actual orientation entirely - a ship approaching at an angle could be told a spot
+    // was clear when its real (rotated) footprint would actually clip land, or blocked when it
+    // wouldn't. Now uses the same rotated-rectangle shape test (IsInsideShape, already used
+    // correctly by occupy() below) and the same direction-finding logic (getInitDirection) that a
+    // real Ship uses once built, so the placement preview matches what actually happens once the
+    // ship exists. The size parameter is kept for caller compatibility but no longer used - the
+    // shape is now defined by OCCUPY_LENGTH_CELLS/OCCUPY_WIDTH_CELLS instead, matching the ship's
+    // real occupied footprint rather than an arbitrary caller-supplied square.
+    // //added by ikill240c
     public static final boolean doIsPlacingLegal(
             UnitGrid unit_grid, int grid_x, int grid_y, int size) {
         if (!unit_grid.isDockable(grid_x, grid_y)) {
             return false;
         }
-        int half = size / 2;
-        for (int y = 0; y < size; y++) {
-            for (int x = 0; x < size; x++) {
-                int current_grid_x = grid_x + x - half;
-                int current_grid_y = grid_y + y - half;
-                if (current_grid_x >= unit_grid.getGridSize()
-                        || current_grid_y >= unit_grid.getGridSize()
-                        || current_grid_x < 0
-                        || current_grid_y < 0) return false;
-                Occupant occupant = unit_grid.getOccupant(current_grid_x, current_grid_y, UnitGrid.LAND);
-                if (occupant != null && !(occupant instanceof StaticOccupant)) {
-                    return false;
-                }
-            }
-        }
+        float[] dir = getInitDirection(unit_grid, grid_x, grid_y); //added by ikill240c
+        float dir_x = dir[0]; //added by ikill240c
+        float dir_y = dir[1]; //added by ikill240c
+        int center_x = HeightMap.METERS_PER_UNIT_GRID * grid_x; //added by ikill240c
+        int center_y = HeightMap.METERS_PER_UNIT_GRID * grid_y; //added by ikill240c
+        float half_length_meters = OCCUPY_LENGTH_CELLS * HeightMap.METERS_PER_UNIT_GRID * 0.5f; //added by ikill240c
+        float half_width_meters = OCCUPY_WIDTH_CELLS * HeightMap.METERS_PER_UNIT_GRID * 0.5f; //added by ikill240c
+        float half_diagonal_meters = (float) StrictMath.sqrt( //added by ikill240c
+                half_length_meters * half_length_meters + half_width_meters * half_width_meters); //added by ikill240c
+        int radius_cells = (int) StrictMath.ceil(half_diagonal_meters / HeightMap.METERS_PER_UNIT_GRID) + 1; //added by ikill240c
+        int grid_size = unit_grid.getGridSize(); //added by ikill240c
+        int start_x = StrictMath.max(0, grid_x - radius_cells); //added by ikill240c
+        int end_x = StrictMath.min(grid_size - 1, grid_x + radius_cells); //added by ikill240c
+        int start_y = StrictMath.max(0, grid_y - radius_cells); //added by ikill240c
+        int end_y = StrictMath.min(grid_size - 1, grid_y + radius_cells); //added by ikill240c
+        for (int y = start_y; y <= end_y; y++) { //added by ikill240c
+            for (int x = start_x; x <= end_x; x++) { //added by ikill240c
+                if (IsInsideShape( //added by ikill240c
+                        x, //added by ikill240c
+                        y, //added by ikill240c
+                        center_x, //added by ikill240c
+                        center_y, //added by ikill240c
+                        dir_x, //added by ikill240c
+                        dir_y, //added by ikill240c
+                        half_length_meters, //added by ikill240c
+                        half_width_meters)) { //added by ikill240c
+                    if (!unit_grid.isWater(x, y) && unit_grid.isGridOccupied(x, y, UnitGrid.LAND)) { //added by ikill240c
+                        return false; //added by ikill240c
+                    } //added by ikill240c
+                } //added by ikill240c
+            } //added by ikill240c
+        } //added by ikill240c
         return true;
     }
 
@@ -632,6 +676,25 @@ public class Ship extends Building implements Movable {
         pushController(new SailController(this, target));
         free();
         occupy();
+    }
+
+    // Merged from boats_on_steam: was entirely missing from this project - completes a ship's
+    // construction immediately (full HP, fully built, placed on the sea layer and occupying its
+    // grid cells) rather than going through the normal gradual build-up via repair()/build_points.
+    // Used for scenarios that need a ship to exist fully-formed right away rather than under
+    // construction (e.g. campaign/tutorial scripting, cheats, or map-editor placement) - any such
+    // caller previously had no way to get a ship past its unbuilt/under-construction state without
+    // manually replicating this same sequence inline. //added by ikill240c
+    public final void instantBuild() { //added by ikill240c
+        setLayer(UnitGrid.SEA); //added by ikill240c
+        register(); //added by ikill240c
+        occupy(); //added by ikill240c
+        int result = getOwner().getBuildingCountContainer().increaseSupply(1); //added by ikill240c
+        assert (result == 1) : "Too many buildings"; //added by ikill240c
+        reinsert(); //added by ikill240c
+        build_points = 1; //added by ikill240c
+        repair(getTemplate().getMaxHitPoints()); //added by ikill240c
+        slid = true; //added by ikill240c
     }
 
     public final void place() {
@@ -725,8 +788,13 @@ public class Ship extends Building implements Movable {
         if (isValidRallyPoint(target)) {
             rally_point = target;
         } else {
-            rally_point = getUnitGrid().findGridTargets(
+            // Same null-safety fix as LandBuilding.setRallyPoint - findGridTargets(...)[0] can
+            // legitimately return null, and rally_point is not @Nullable. Leaves the existing rally
+            // point unchanged instead of corrupting it to null. //added by ikill240c
+            Target found = getUnitGrid().findGridTargets(
                     target.getGridX(), target.getGridY(), 1, false, UnitGrid.LAND)[0];
+            if (found != null)
+                rally_point = found;
         }
     }
 

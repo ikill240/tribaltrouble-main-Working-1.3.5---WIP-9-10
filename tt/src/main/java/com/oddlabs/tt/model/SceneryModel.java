@@ -13,6 +13,14 @@ public class SceneryModel extends Model implements Occupant, ModelToolTip, Anima
     private final @NonNull SpriteKey sprite_renderer;
     private final float shadow_diameter;
     private final boolean occupy;
+    // Tracks whether occupyGrid() actually ran in the constructor below, separately from `occupy`
+    // (the caller's REQUEST to occupy) - the two can now differ, since the constructor skips the
+    // actual occupyGrid() call when the target cell turns out to already be taken by something
+    // else. remove() must only free the grid if this scenery model actually occupied it in the
+    // first place - freeing a cell it never held crashes freeGrid()'s own "this occupant isn't
+    // what's actually there" assertion just as surely as the original occupyGrid() crash did.
+    // //added by ikill240c
+    private boolean did_occupy = false; //added by ikill240c
     private final @Nullable String name;
     private final int animation;
     private final float seconds_per_animation_cycle;
@@ -43,7 +51,18 @@ public class SceneryModel extends Model implements Occupant, ModelToolTip, Anima
         setDirection(dir_x, dir_y);
         doRegister();
         if (occupy) {
-            world.getUnitGrid().occupyGrid(getGridX(), getGridY(), this);
+            // Guard against a grid cell already being occupied by something else (e.g. a randomly
+            // scattered plant/resource that happens to land on this scenery's fixed campaign
+            // coordinates, or two scenery placements overlapping) - occupyGrid() asserts the cell
+            // is free and crashes the entire game outright if it isn't. Scenery is purely
+            // decorative, so skipping the occupancy (it still renders and plays its animation,
+            // just doesn't block pathfinding at this one cell) is a far better outcome than a
+            // fatal crash over what's ultimately a cosmetic placement conflict.
+            // //added by ikill240c
+            if (!world.getUnitGrid().isGridOccupied(getGridX(), getGridY(), UnitGrid.LAND)) { //added by ikill240c
+                world.getUnitGrid().occupyGrid(getGridX(), getGridY(), this);
+                did_occupy = true; //added by ikill240c
+            } //added by ikill240c
         }
     }
 
@@ -66,7 +85,7 @@ public class SceneryModel extends Model implements Occupant, ModelToolTip, Anima
 
     @Override
     public final void remove() {
-        if (occupy) {
+        if (did_occupy) { //added by ikill240c - was `if (occupy)`; see did_occupy's own field comment for why occupy alone is no longer sufficient here
             getWorld().getUnitGrid().freeGrid(getGridX(), getGridY(), this);
         }
         super.remove();

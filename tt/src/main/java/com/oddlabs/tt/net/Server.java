@@ -151,6 +151,13 @@ public final class Server implements ConnectionListenerInterface {
     @Override
     public void error(AbstractConnectionListener listener, IOException e) {
         IO.println("Listener failed: " + e);
+        // NetworkSelector's dispatch loop wraps any non-IOException as
+        // `new IOException("Unexpected error", e)`, preserving the real cause - but printing just
+        // e.toString() (as this line always did) never shows that cause, so whatever actually
+        // went wrong (e.g. an exception thrown while generating a custom map) was completely
+        // invisible in the log. printStackTrace() walks the full "Caused by:" chain.
+        // //added by ikill240c
+        e.printStackTrace(); //added by ikill240c
         close();
     }
 

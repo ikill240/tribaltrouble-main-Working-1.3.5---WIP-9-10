@@ -24,7 +24,17 @@ application {
         "--enable-native-access=ALL-UNNAMED",
         "-Dcom.oddlabs.tt.developer=true",
         "-Djdk.crypto.KeyAgreement.legacyKDF=true",
-        "-Xms80m", "-Xmx512m"
+        // Was 4g - a Channel's pixel storage is a float[][], meaning a full-map-size Channel at
+        // SIZE_UNREAL (8192x8192) is ~268MB, and Landscape's generation pipeline creates many such
+        // Channels in relatively quick succession (156+ copy/construction sites in Landscape.java
+        // alone, plus more inside Channel's own methods like largestConnected()). At 4g, that was
+        // enough simultaneous live memory to push the JVM into GC thrashing - the collector running
+        // near-continuously trying to reclaim space, which presents as the whole app going
+        // unresponsive (Windows "Not Responding") rather than a clean crash, since technically the
+        // process is still "running", just making near-zero forward progress. Raised to 12g as a
+        // generous default; lower it if this exceeds what's reasonable to reserve on a given
+        // machine, or raise it further on a system with more RAM to spare. //added by ikill240c
+        "-Xms80m", "-Xmx12g" //added by ikill240c
     )
     if (System.getProperty("os.name").lowercase().contains("mac")) {
         args.add("-XstartOnFirstThread")
@@ -129,7 +139,11 @@ val packageWindows by tasks.registering(Exec::class) {
         "--main-jar", mainJarFile.get(),
         "--main-class", "com.oddlabs.tt.Main",
         "--java-options",
-        "-ea -Djdk.crypto.KeyAgreement.legacyKDF=true -Xmx512m -cp \$APPDIR\\;\$APPDIR\\*",
+        // Was -Xmx4g - see the applicationDefaultJvmArgs comment above for why this needed
+        // raising (SIZE_UNREAL's ~268MB-per-Channel generation cost). A packaged/distributed build
+        // hitting this same ceiling would hang identically to the dev `run` task did.
+        // //added by ikill240c
+        "-ea -Djdk.crypto.KeyAgreement.legacyKDF=true -Xmx12g -cp \$APPDIR\\;\$APPDIR\\*", //added by ikill240c
         "--type", "app-image",
     )
 }

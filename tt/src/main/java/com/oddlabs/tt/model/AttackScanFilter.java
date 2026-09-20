@@ -1,12 +1,11 @@
 package com.oddlabs.tt.model;
 
 import com.oddlabs.tt.pathfinder.Occupant;
-import com.oddlabs.tt.pathfinder.ScanFilter;
 import com.oddlabs.tt.player.Player;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 
-public final class AttackScanFilter implements ScanFilter {
+public final class AttackScanFilter implements TargetPickingScanFilter { //added by ikill240c
     public enum Priority {
         NONE(0),
         QUARTERS(1),

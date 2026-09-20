@@ -7,6 +7,7 @@ import com.oddlabs.tt.landscape.HeightMap;
 import com.oddlabs.tt.procedural.Landscape;
 import com.oddlabs.tt.render.Texture;
 import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable; //added by ikill240c
 import org.lwjgl.opengl.GL11;
 
 import java.io.Serial;
@@ -72,7 +73,8 @@ public final class IslandGenerator implements WorldGenerator {
     }
 
     @Override
-    public @NonNull WorldInfo generate(int num_players, int initial_unit_count, float random_start_pos) {
+    public @NonNull WorldInfo generate(int num_players, int initial_unit_count, float random_start_pos,
+            boolean team_together, int @Nullable [] player_teams) { //added by ikill240c
         int colormap_size = grid_units * getTexelsPerGridUnit();
         int chunks_per_colormap = colormap_size / TEXELS_PER_CHUNK;
 
@@ -86,7 +88,8 @@ public final class IslandGenerator implements WorldGenerator {
         base_level -= detail_mip_level;
         base_level = Math.min(base_level, 1);
         Landscape landscape = new Landscape(num_players, meters_per_world, terrain, detail_prefade, hills,
-                vegetation_amount, supplies_amount, seed, initial_unit_count, random_start_pos, archipelago);
+                vegetation_amount, supplies_amount, seed, initial_unit_count, random_start_pos, archipelago,
+                null, team_together, player_teams); //added by ikill240c - null authored_terrain means the existing procedural path, unchanged
         Instant time_after = Instant.now();
         IO.println("Landscape created in " + Duration.between(time_before, time_after));
         BlendInfo[] blend_infos = landscape.getBlendInfos();

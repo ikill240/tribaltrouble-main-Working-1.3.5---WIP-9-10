@@ -13,6 +13,7 @@ import com.oddlabs.tt.delegate.InGameMainMenu;
 import com.oddlabs.tt.delegate.SelectionDelegate;
 import com.oddlabs.tt.event.LocalEventQueue;
 import com.oddlabs.tt.global.Globals;
+import com.oddlabs.tt.global.Settings; //added by ikill240c
 import com.oddlabs.tt.gui.ActionButtonPanel;
 import com.oddlabs.tt.gui.GUIRoot;
 import com.oddlabs.tt.gui.Group;
@@ -48,6 +49,7 @@ import com.oddlabs.tt.resource.WorldInfo;
 import com.oddlabs.tt.util.ServerMessageBundler;
 import com.oddlabs.tt.util.Target;
 import com.oddlabs.tt.util.Utils;
+import org.joml.Vector4fc; //added by ikill240c
 import org.jspecify.annotations.NonNull;
 
 import java.util.Arrays;
@@ -142,10 +144,30 @@ public final class WorldViewer implements Animated, AutoCloseable {
             }
         };
         PlayerInfo[] player_infos = Arrays.stream(player_slots).map(PlayerSlot::getInfo).toArray(PlayerInfo[]::new);
+        // Was: World.java assigned colors via a sequential iterator over team_colours, purely by
+        // POSITION in player_infos. WorldStarter/ReplayWorldStarter compact out closed slots before
+        // player_slots ever reaches here, which shifts every later player's position in the compacted
+        // array - so closing one slot could silently reassign a completely different color to every
+        // player after it (e.g. "AI supposed to be red turns blue when the slot before it is closed").
+        // Each PlayerSlot object survives compaction unchanged (only the array is filtered, not the
+        // objects), so getSlot() still returns each player's ORIGINAL lobby slot index - using that to
+        // look up their color keeps it correct regardless of which slots are closed. //added by ikill240c
+        Vector4fc[] team_colours = Settings.getSettings().team_colours;
+        Vector4fc[] player_colors = new Vector4fc[player_slots.length];
+        for (int i = 0; i < player_slots.length; i++) {
+            player_colors[i] = team_colours[player_slots[i].getSlot()];
+        }
+        // player_infos is already indexed the same way generate()'s resulting start positions
+        // will be, so this is a direct, correctly-aligned per-player team lookup - see
+        // WorldGenerator.generate()'s own comment for how it's used. //added by ikill240c
+        int[] player_teams = new int[player_infos.length]; //added by ikill240c
+        for (int i = 0; i < player_infos.length; i++) { //added by ikill240c
+            player_teams[i] = player_infos[i].getTeam(); //added by ikill240c
+        } //added by ikill240c
         WorldInfo world_info = generator.generate(player_infos.length, world_params.getInitialUnitCount(),
-                ingame_info.getRandomStartPosition());
+                ingame_info.getRandomStartPosition(), world_params.isTeamTogether(), player_teams); //added by ikill240c
         this.world = World.newWorld(audio_impl, landscape_resources, races_resources, listener, world_params,
-                world_info, generator.getTerrainType(), player_infos, worldFog);
+                world_info, generator.getTerrainType(), player_infos, player_colors, worldFog);
         this.local_player = world.getPlayers()[player_slot];
         this.selection = new Selection(local_player);
         landscape_renderer = new LandscapeRenderer(world, world_info, animation_manager_local);
@@ -214,9 +236,18 @@ public final class WorldViewer implements Animated, AutoCloseable {
         if (slot.getType() == PlayerSlot.AI) {
             AI ai = null;
             switch (slot.getAIDifficulty()) {
-                case PlayerSlot.AI_NORMAL -> ai = new AdvancedAI(player, unit_info, AdvancedAI.DIFFICULTY_NORMAL);
-                case PlayerSlot.AI_HARD -> ai = new AdvancedAI(player, unit_info, AdvancedAI.DIFFICULTY_HARD);
-                case PlayerSlot.AI_EASY -> ai = new AdvancedAI(player, unit_info, AdvancedAI.DIFFICULTY_EASY);
+                // Adaptive AI (WorldParameters.isAdaptiveAiEnabled()) overrides whichever manual tier
+                // was picked for this slot - the 4-arg constructor re-seeds difficulty from
+                // AdaptiveAIProfile when adaptive is true, so the DIFFICULTY_* passed here only
+                // matters when the toggle is off. //added by ikill240c 2026-09-12
+                case PlayerSlot.AI_NORMAL -> ai = new AdvancedAI(player, unit_info, AdvancedAI.DIFFICULTY_NORMAL,
+                        world_params.isAdaptiveAiEnabled()); //added by ikill240c 2026-09-12
+                case PlayerSlot.AI_HARD -> ai = new AdvancedAI(player, unit_info, AdvancedAI.DIFFICULTY_HARD,
+                        world_params.isAdaptiveAiEnabled()); //added by ikill240c 2026-09-12
+                case PlayerSlot.AI_EASY -> ai = new AdvancedAI(player, unit_info, AdvancedAI.DIFFICULTY_EASY,
+                        world_params.isAdaptiveAiEnabled()); //added by ikill240c 2026-09-12
+                case PlayerSlot.AI_INSANE -> ai = new AdvancedAI(player, unit_info, AdvancedAI.DIFFICULTY_INSANE, //added by ikill240c
+                        world_params.isAdaptiveAiEnabled()); //added by ikill240c
                 case PlayerSlot.AI_BATTLE_TUTORIAL -> ai = new PassiveAI(player, unit_info, true);
                 case PlayerSlot.AI_TOWER_TUTORIAL -> {
                 }

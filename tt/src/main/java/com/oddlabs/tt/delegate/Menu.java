@@ -27,6 +27,7 @@ import com.oddlabs.tt.net.WorldInitAction;
 import com.oddlabs.tt.player.Player;
 import com.oddlabs.tt.procedural.Landscape;
 import com.oddlabs.tt.render.Renderer;
+import com.oddlabs.tt.resource.CustomMapGenerator;
 import com.oddlabs.tt.resource.IslandGenerator;
 import com.oddlabs.tt.resource.WorldGenerator;
 import com.oddlabs.tt.trigger.GameOverTrigger;
@@ -337,6 +338,51 @@ public abstract class Menu extends CameraDelegate<Camera> {
         boolean multiplayer = ingame_info.isMultiplayer();
         WorldGenerator generator = new IslandGenerator(meters_per_world, terrain, hills, vegetation_amount,
                 supplies_amount, seed, archipelago);
+        InetAddress address = multiplayer ? null : com.oddlabs.util.Utils.getLoopbackAddress();
+        final Server server = new Server(network, game, address, generator, multiplayer, ai_names, player_count);
+        Client client = new Client(server::close, network, gui_root.getGUI(), -1, world_params, ingame_info,
+                init_action);
+        GameNetwork game_network = new GameNetwork(server, client);
+        ConnectingForm connecting_form = new ConnectingForm(game_network, gui_root, owner, multiplayer);
+        client.setConfigurationListener(connecting_form);
+        gui_root.addModalForm(connecting_form);
+        return game_network;
+    }
+
+    // The two overloads below are NEW additions for custom (hand-authored) maps - deliberately
+    // NEW OVERLOADS rather than modifications to the two existing methods above, since
+    // TutorialForm.java and campaign Island.java also call those two directly and would fail to
+    // compile if a new required parameter were inserted into their signatures.
+    // //added by ikill240c
+    public static @NonNull GameNetwork startNewGame(@NonNull NetworkSelector network, @NonNull GUIRoot gui_root,
+            SelectGameMenu owner, WorldParameters world_params, @NonNull InGameInfo ingame_info,
+            WorldInitAction init_action, Game game, int meters_per_world, Landscape.@NonNull TerrainType terrain,
+            float hills, float vegetation_amount, float supplies_amount, int seed, boolean archipelago,
+            @Nullable String custom_map_path, String[] ai_names) { //added by ikill240c
+        return startNewGame(network, gui_root, owner, world_params, ingame_info, init_action, game, meters_per_world,
+                terrain, hills, vegetation_amount, supplies_amount, seed, archipelago, custom_map_path, ai_names,
+                MatchmakingServerInterface.MAX_PLAYERS);
+    }
+
+    public static @NonNull GameNetwork startNewGame(@NonNull NetworkSelector network, @NonNull GUIRoot gui_root,
+            SelectGameMenu owner, WorldParameters world_params, @NonNull InGameInfo ingame_info,
+            WorldInitAction init_action, Game game, int meters_per_world, Landscape.@NonNull TerrainType terrain,
+            float hills, float vegetation_amount, float supplies_amount, int seed, boolean archipelago,
+            @Nullable String custom_map_path, String[] ai_names, //added by ikill240c
+            int player_count) {
+        boolean multiplayer = ingame_info.isMultiplayer();
+        // custom_map_path takes priority: when a hand-authored map is loaded, CustomMapGenerator
+        // replaces IslandGenerator entirely - hills/vegetation_amount/supplies_amount/seed/
+        // archipelago are ignored in that case since Landscape's authored path bypasses the noise
+        // generators those parameters would otherwise feed. A plain file PATH is passed through
+        // (not the loaded AuthoredTerrain object) since WorldGenerator instances get sent whole
+        // over a network RPC channel with a hard ~32KB per-event limit - see
+        // CustomMapGenerator's class-level comment for the full explanation.
+        // //added by ikill240c
+        WorldGenerator generator = (custom_map_path != null) //added by ikill240c
+                ? new CustomMapGenerator(custom_map_path, meters_per_world, terrain) //added by ikill240c
+                : new IslandGenerator(meters_per_world, terrain, hills, vegetation_amount, //added by ikill240c
+                        supplies_amount, seed, archipelago); //added by ikill240c
         InetAddress address = multiplayer ? null : com.oddlabs.util.Utils.getLoopbackAddress();
         final Server server = new Server(network, game, address, generator, multiplayer, ai_names, player_count);
         Client client = new Client(server::close, network, gui_root.getGUI(), -1, world_params, ingame_info,

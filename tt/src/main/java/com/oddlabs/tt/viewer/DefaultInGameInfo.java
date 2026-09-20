@@ -1,5 +1,9 @@
 package com.oddlabs.tt.viewer;
 
+import com.oddlabs.matchmaking.Preset; //added by ikill240c
+import com.oddlabs.matchmaking.RosterTemplate; //added by ikill240c
+import com.oddlabs.matchmaking.StandardOptions; //added by ikill240c
+import com.oddlabs.matchmaking.WorldConfig; //added by ikill240c
 import com.oddlabs.tt.delegate.GameStatsDelegate;
 import com.oddlabs.tt.delegate.InGameMainMenu;
 import com.oddlabs.tt.delegate.Menu;
@@ -11,6 +15,7 @@ import com.oddlabs.tt.gui.Label;
 import com.oddlabs.tt.gui.ScrollableGroup;
 import com.oddlabs.tt.gui.Skin;
 import com.oddlabs.tt.model.RacesResources;
+import com.oddlabs.tt.player.AdvancedAI; //added by ikill240c
 import com.oddlabs.tt.player.Player;
 import com.oddlabs.tt.player.PlayerInfo;
 import com.oddlabs.tt.render.Renderer;
@@ -141,10 +146,63 @@ public class DefaultInGameInfo implements InGameInfo {
     public final void close(@NonNull WorldViewer viewer) {
         if (replay_island_flag) {
             TerrainMenu menu = new TerrainMenu(viewer.getNetwork(), viewer.getGUIRoot(), null, false, null);
+            // Was just parseMapcode() + startGame() - that restores the MAP (size, terrain type,
+            // hills/vegetation/supplies sliders, seed), but nothing about the player roster: player
+            // count, races, teams, and AI difficulties were always left at the fresh menu's
+            // defaults (2 players, both easy AI, no teams configured) regardless of what the just-
+            // ended game actually had. "Replay Island" only ever restored the island itself, never
+            // who was actually playing on it. Building a RosterTemplate from the just-ended game's
+            // live players and running it through the exact same applyPreset() the presets system
+            // already uses fixes this without duplicating that application logic.
+            // //added by ikill240c
+            menu.applyPreset(buildReplayPreset(viewer)); //added by ikill240c
+            // parseMapcode() runs AFTER applyPreset() (not before) because applyPreset() also
+            // applies preset.getWorld() (map size/terrain/sliders) - since buildReplayPreset()
+            // below only supplies WorldConfig.defaults() for that part (the actual map is restored
+            // by mapcode, not by trying to reverse-engineer a WorldConfig from the live
+            // HeightMap), parseMapcode() needs the final say so its restored values aren't
+            // clobbered back to those defaults. //added by ikill240c
             menu.parseMapcode(viewer.getParameters().getMapcode());
             menu.startGame();
         } else
             Renderer.startMenu(viewer.getNetwork(), viewer.getGUIRoot().getGUI());
+    }
+
+    // Captures the just-ended game's player roster (race, team, and AI difficulty per player) as a
+    // Preset, so it can be re-applied to the fresh replay menu via the exact same applyPreset()
+    // mechanism the saved-presets system already uses. World/mode options are left at defaults
+    // deliberately - the map itself is restored separately via parseMapcode() in close() above,
+    // and mode-specific options beyond the roster aren't part of what "Replay Island" has ever
+    // claimed to restore. //added by ikill240c
+    private @NonNull Preset buildReplayPreset(@NonNull WorldViewer viewer) { //added by ikill240c
+        Player[] players = viewer.getWorld().getPlayers();
+        RosterTemplate.Slot[] slots = new RosterTemplate.Slot[players.length]; //added by ikill240c
+        for (int i = 0; i < players.length; i++) { //added by ikill240c
+            Player player = players[i]; //added by ikill240c
+            RosterTemplate.Fill fill; //added by ikill240c
+            if (i == 0) { //added by ikill240c
+                // Slot 0 is always the local human player's own seat, regardless of fill type -
+                // matches fillToDifficultyIndex()'s own special-case for slot 0 in TerrainMenu.
+                // //added by ikill240c
+                fill = RosterTemplate.Fill.HOST; //added by ikill240c
+            } else if (player.getAI() instanceof AdvancedAI ai) { //added by ikill240c
+                fill = switch (ai.getDifficulty()) { //added by ikill240c
+                    case 0 -> RosterTemplate.Fill.EASY_AI; //added by ikill240c
+                    case 1 -> RosterTemplate.Fill.NORMAL_AI; //added by ikill240c
+                    case 2 -> RosterTemplate.Fill.HARD_AI; //added by ikill240c
+                    default -> RosterTemplate.Fill.INSANE_AI; //added by ikill240c
+                };
+            } else { //added by ikill240c
+                // Not slot 0 and not AI - either another human (not present in a fresh SP replay
+                // lobby, so treated as an open seat) or some other non-AdvancedAI controller.
+                // //added by ikill240c
+                fill = RosterTemplate.Fill.OPEN; //added by ikill240c
+            } //added by ikill240c
+            slots[i] = new RosterTemplate.Slot(fill, player.getPlayerInfo().getRace(), //added by ikill240c
+                    player.getPlayerInfo().getTeam()); //added by ikill240c
+        } //added by ikill240c
+        return new Preset("replay_island", "Replay Island", WorldConfig.defaults(), //added by ikill240c
+                StandardOptions.defaults(), new RosterTemplate(slots), false); //added by ikill240c
     }
 
     @Override

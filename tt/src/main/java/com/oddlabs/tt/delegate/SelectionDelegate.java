@@ -15,12 +15,14 @@ import com.oddlabs.tt.model.Abilities;
 import com.oddlabs.tt.model.Action;
 import com.oddlabs.tt.model.Army;
 import com.oddlabs.tt.model.Building;
+import com.oddlabs.tt.model.MountUnitContainer; //added by ikill240c
 import com.oddlabs.tt.model.LandBuilding;
 import com.oddlabs.tt.model.BuildingTemplate;
 import com.oddlabs.tt.model.Selectable;
 import com.oddlabs.tt.model.Ship;
 import com.oddlabs.tt.model.Unit;
 import com.oddlabs.tt.model.UnitTemplate;
+import com.oddlabs.tt.player.Formation; //added by ikill240c
 import com.oddlabs.tt.model.behaviour.IdleController;
 import com.oddlabs.tt.render.CompassRenderer;
 import com.oddlabs.tt.render.GUIRenderer;
@@ -43,6 +45,14 @@ public final class SelectionDelegate extends ControllableCameraDelegate {
     };
     private static final GameAction[] ARMY_SELECTS = new GameAction[]{GameAction.ARMY_SELECT_0, GameAction.ARMY_SELECT_1, GameAction.ARMY_SELECT_2, GameAction.ARMY_SELECT_3, GameAction.ARMY_SELECT_4, GameAction.ARMY_SELECT_5, GameAction.ARMY_SELECT_6, GameAction.ARMY_SELECT_7, GameAction.ARMY_SELECT_8, GameAction.ARMY_SELECT_9
     };
+    // Parallel arrays: FORMATION_ACTIONS[i] is the keybind that switches to FORMATIONS[i]. //added by ikill240c
+    private static final GameAction[] FORMATION_ACTIONS = new GameAction[]{GameAction.FORMATION_SQUARE,
+            GameAction.FORMATION_DIAMOND, GameAction.FORMATION_CIRCLE, GameAction.FORMATION_TIGHT,
+            GameAction.FORMATION_LOOSE, GameAction.FORMATION_BY_TYPE, GameAction.FORMATION_DEFAULT,
+            GameAction.FORMATION_STAR}; //added by ikill240c
+    private static final Formation[] FORMATIONS = new Formation[]{Formation.SQUARE, Formation.DIAMOND,
+            Formation.CIRCLE, Formation.TIGHT, Formation.LOOSE, Formation.BY_TYPE, Formation.DEFAULT,
+            Formation.STAR}; //added by ikill240c
     private final @NonNull InGameChatForm chat_form;
     private final @NonNull Label observer_label;
     private final @NonNull GameCamera game_camera;
@@ -170,6 +180,45 @@ public final class SelectionDelegate extends ControllableCameraDelegate {
                         return;
                     }
                 }
+
+                // Formations - Alt+1 through Alt+8. //added by ikill240c
+                for (int i = 0; i < FORMATIONS.length; i++) {
+                    if (event.consumeAction(FORMATION_ACTIONS[i])) {
+                        if (!map_mode && !observer) {
+                            // Was Player.setFormation(Formation) with no selection - a single,
+                            // global setting applied to every future order for every unit
+                            // regardless of what was actually selected. Now applies only to the
+                            // units in the CURRENT SELECTION at the moment this shortcut is
+                            // pressed (filtered to Abilities.TARGET, matching how Picker.
+                            // pickTarget() itself selects which units in an Army an order actually
+                            // applies to), per an explicit request that formations be a property
+                            // of the selected units, not a universal player-wide mode.
+                            // //added by ikill240c
+                            Selectable<?>[] selection = getViewer().getSelection().getCurrentSelection() //added by ikill240c
+                                    .filter(Abilities.TARGET); //added by ikill240c
+                            getViewer().getLocalPlayer().setFormation(selection, FORMATIONS[i]); //added by ikill240c
+                            getGUIRoot().getInfoPrinter().print(Utils.getBundleString(
+                                    ResourceBundle.getBundle(SelectionDelegate.class.getName()),
+                                    "formation_" + FORMATIONS[i].name().toLowerCase()));
+                        }
+                        event.consume();
+                        return;
+                    }
+                }
+
+                // Stand Ground - "Y", applies to whatever's currently selected. Goes through
+                // PlayerInterface.standGround(...) (network-safe, same as every other unit
+                // command here) rather than calling Unit.standGround() directly on each selected
+                // unit from this input-handling code. //added by ikill240c
+                if (event.consumeAction(GameAction.STAND_GROUND)) { //added by ikill240c
+                    if (!map_mode && !observer) { //added by ikill240c
+                        var set = getViewer().getSelection().getCurrentSelection().getSet(); //added by ikill240c
+                        getViewer().getPeerHub().getPlayerInterface() //added by ikill240c
+                                .standGround(set.toArray(new Selectable<?>[0])); //added by ikill240c
+                    } //added by ikill240c
+                    event.consume(); //added by ikill240c
+                    return; //added by ikill240c
+                } //added by ikill240c
 
                 if (event.consumeAction(GameAction.GLOBAL_CHAT)) {
                     if (!chat_visible)
@@ -415,6 +464,22 @@ public final class SelectionDelegate extends ControllableCameraDelegate {
                 Selectable<?>[] picked = getViewer().getPicker().pickBoxed(
                         getViewer().getGUIRoot().getDelegate().getCamera().getState(), selection_x1, selection_y1,
                         selection_x2, selection_y2, clicks, select_by_type);
+                // Picker returns a single-element array specifically (not the normal
+                // select-all-of-type expansion) when double-clicking a tower with a unit currently
+                // mounted in it - see Picker.createSinglePick()'s comment. Ownership is checked
+                // here, not in Picker, matching how the existing building-select-all branch also
+                // defers ownership checks to this loop rather than Picker itself - you shouldn't
+                // be able to unmount an enemy's tower this way. Issues the exact same
+                // exitTower(...) command the "Exit Tower" action button already calls (see
+                // ActionButtonPanel.java), so this is a network-safe shortcut, not a separate
+                // action path. //added by ikill240c
+                if (clicks > 1 && picked.length == 1 && picked[0] instanceof Building tower //added by ikill240c
+                        && tower.getOwner() == getViewer().getLocalPlayer() //added by ikill240c
+                        && tower.getUnitContainer() instanceof MountUnitContainer mount_container //added by ikill240c
+                        && mount_container.getUnit() != null) { //added by ikill240c
+                    getViewer().getPeerHub().getPlayerInterface().exitTower(tower); //added by ikill240c
+                    return; //added by ikill240c
+                } //added by ikill240c
                 List<Selectable<UnitTemplate>> friendly_units = new ArrayList<>();
                 List<Ship> friendly_ships = new ArrayList<>();
                 Selectable<BuildingTemplate> friendly_building = null;
@@ -431,6 +496,34 @@ public final class SelectionDelegate extends ControllableCameraDelegate {
                             } else {
                                 throw new RuntimeException();
                             }
+                        } else if (selectable instanceof LandBuilding ally_building //added by ikill240c
+                                && !getViewer().getLocalPlayer().isEnemy(selectable.getOwner())) { //added by ikill240c
+                            // An ally-owned building (not the local player's own, but not an enemy's
+                            // either) was previously funneled into the plain "enemy" catch-all below,
+                            // meaning it could only ever be targeted for attack, never selected as
+                            // something to control. Routes it into friendly_building instead - the
+                            // same slot the local player's own building uses - so it gets added to
+                            // the selection and ActionButtonPanel shows the same building controls
+                            // for it. Nothing downstream (SelectionArmy, Picker.pickTarget,
+                            // Player.isValid()) checks ownership beyond "not an enemy" any more (see
+                            // Player.isValid()'s own comment for the matching engine-side fix) - they
+                            // operate on whatever's actually in the selection, so getting an ally's
+                            // building into that selection is the entire fix needed here.
+                            // //added by ikill240c
+                            friendly_building = ally_building; //added by ikill240c
+                        } else if (selectable instanceof Ship ally_ship //added by ikill240c
+                                && !getViewer().getLocalPlayer().isEnemy(selectable.getOwner())) { //added by ikill240c
+                            // Same reasoning as the ally building case above, extended to units
+                            // (ships and land units both) per an explicit follow-up request - was
+                            // scoped to buildings only at first, but Player.isValid() (the actual
+                            // engine-side gate every order-issuing method funnels through) was
+                            // relaxed for any non-enemy owner regardless of type, so restricting
+                            // selection to buildings only here was leaving that already-safe
+                            // capability inaccessible for units specifically. //added by ikill240c
+                            friendly_ships.add(ally_ship); //added by ikill240c
+                        } else if (selectable instanceof Unit ally_unit //added by ikill240c
+                                && !getViewer().getLocalPlayer().isEnemy(selectable.getOwner())) { //added by ikill240c
+                            friendly_units.add(ally_unit); //added by ikill240c
                         } else {
                             enemy = selectable;
                         }

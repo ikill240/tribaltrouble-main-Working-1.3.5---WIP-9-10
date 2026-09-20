@@ -56,6 +56,7 @@ public class KeyBindingPanel extends Panel {
         TRAINING("category.training"),
         RESOURCES("category.resources"),
         MAGIC("category.magic"),
+        FORMATION("category.formation"), //added by ikill240c
         GAME("category.game"),
         CHEATS("category.cheats"),
         DEBUG("category.debug");
@@ -76,6 +77,7 @@ public class KeyBindingPanel extends Panel {
         if (name.startsWith("TRAIN_")) return Category.TRAINING;
         if (name.startsWith("RES_")) return Category.RESOURCES;
         if (name.startsWith("MAGIC_")) return Category.MAGIC;
+        if (name.startsWith("FORMATION_")) return Category.FORMATION; //added by ikill240c
         if (name.startsWith("CHEAT_")) return Category.CHEATS;
         if (name.startsWith("DEBUG_")) return Category.DEBUG;
         if (name.startsWith("UNIT_") || name.equals("GAMEPLAY_BACK")) return Category.UNIT;

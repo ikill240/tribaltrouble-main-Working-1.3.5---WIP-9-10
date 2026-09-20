@@ -29,8 +29,18 @@ public abstract class Controller {
         }
     }
 
-    public void onStuck() {//added by ikill240c
-        // default: no-op; only controllers that can meaningfully reroute override this
+    // Was void, with a no-op default meaning "nothing happens" for any controller that doesn't
+    // override this - which was every controller except GatherController, so a unit stuck under
+    // any other controller (walking to attack, following, entering a building, anything) had no
+    // recovery mechanism at all once its own stuck-detection actually started firing for those
+    // too (see Unit.updateStuckCheck()'s own comment for why detection itself was previously
+    // limited to gathering specifically). Returns whether this controller actually did something
+    // about being stuck, so the caller (Unit.updateStuckCheck()) can apply a generic fallback -
+    // popping the controller, abandoning the stuck order rather than the unit standing there
+    // forever - for any controller that doesn't have a more specific recovery of its own.
+    // //added by ikill240c
+    public boolean onStuck() {//added by ikill240c
+        return false; // default: not handled; caller applies its own generic fallback //added by ikill240c
     }
 
     public @NonNull String getKey() {

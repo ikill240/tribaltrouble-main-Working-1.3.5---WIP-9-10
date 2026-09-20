@@ -65,6 +65,21 @@ public abstract class Building extends Selectable<BuildingTemplate> implements O
 
     public abstract int getHitPoints();
 
+    /**
+     * This building's actual max HP, accounting for any multiplier applied to it (e.g.
+     * LandBuilding's building health multiplier). Defaults to the raw template value, which is
+     * already correct for subclasses (Ship, ShipProxy) that don't apply any such multiplier -
+     * LandBuilding overrides this with the scaled value. Needed so callers that only hold a
+     * Building reference (not knowing which concrete subclass) can get the correct max HP without
+     * an instanceof check - ToolTipAdapter.visitBuilding() previously divided by
+     * getTemplate().getMaxHitPoints() directly, which overflowed the health ratio above 1.0 once a
+     * health multiplier was in play, crashing GUIIcons.getWatch() with an out-of-bounds index.
+     * //added by ikill240c 2026-09-12
+     */
+    public int getEffectiveMaxHitPoints() { //added by ikill240c 2026-09-12
+        return getTemplate().getMaxHitPoints();
+    }
+
     public abstract void repair(int amount);
 
     public abstract boolean isPlacingLegal();

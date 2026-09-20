@@ -48,18 +48,18 @@ import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
 public final class RacesResources {
-    public static final int QUARTERS_SIZE = 5;//og 5;
+    public static final int QUARTERS_SIZE = 6;//og 5;
     public static final int ARMORY_SIZE = 4;//og 5;
-    public static final int TOWER_SIZE = 2;//og 3;
-    public static final int SHIP_SIZE = 12;//og 12;
+    public static final int TOWER_SIZE = 3;//og 3;
+    public static final int SHIP_SIZE = 7;//og 12;
     public static final int MAX_BUILDING_SIZE = IntStream.of(QUARTERS_SIZE, ARMORY_SIZE,
             TOWER_SIZE).max().orElseThrow();
-    public static final int QUARTERS_HIT_POINTS = 600;//og 200;
-    public static final int ARMORY_HIT_POINTS = 500;//og 200;
-    public static final int TOWER_HIT_POINTS = 250;//og 100;
-    public static final int SHIP_HIT_POINTS = 250;//og 250;
-    public static final int VIKING_CHIEFTAIN_HIT_POINTS = 450;// og 60;
-    public static final int NATIVE_CHIEFTAIN_HIT_POINTS = 430;// og 40;
+    public static final int QUARTERS_HIT_POINTS = 200;//og 200;
+    public static final int ARMORY_HIT_POINTS = 200;//og 200;
+    public static final int TOWER_HIT_POINTS = 100;//og 100;
+    public static final int SHIP_HIT_POINTS = 350;//og 250;
+    public static final int VIKING_CHIEFTAIN_HIT_POINTS = 150;// og 60;
+    public static final int NATIVE_CHIEFTAIN_HIT_POINTS = 130;// og 40;
 
     public static final int RACE_NATIVES = 0;
     public static final int RACE_VIKINGS = 1;
@@ -71,7 +71,7 @@ public final class RacesResources {
     public static final int INDEX_MAGIC_BLAST = 1;
     public static final int INDEX_MAGIC_CONVERT = 2;//added by ikill240c
 
-    public static final float THROW_RANGE = 10f;
+    public static final float THROW_RANGE = 9f; //og 8
 
     public static final GeneratorHalos DEFAULT_SHADOW_DESC = new GeneratorHalos(128,
             new float[][]{{0f, 0.75f}, {0.5f, 0f}}, new float[][]{{0.40f, 0f}, {0.41f, 1f}, {0.48f, 1f}, {0.49f, 0f}});
@@ -85,7 +85,7 @@ public final class RacesResources {
     private static final String[] race_names = {Utils.getBundleString(bundle, "natives"), Utils.getBundleString(bundle,
             "vikings")
     };
-    private static final int MAX_UNIT_RESOURCES = 2;//og 1;
+    private static final int MAX_UNIT_RESOURCES = 1;//og 1;
 
     private final @NonNull TextureKey[] smoke_textures = new TextureKey[1];
     private final @NonNull TextureKey[] damage_smoke_textures = new TextureKey[1];

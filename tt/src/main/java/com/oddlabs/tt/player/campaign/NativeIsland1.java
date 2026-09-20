@@ -78,6 +78,11 @@ public final class NativeIsland1 extends Island {
 
     @Override
     protected void start() {
+        // Campaign progression gate: Convert unavailable to Natives until island 2; Chiefs
+        // Courage unavailable until island 5. Same enable/disable pattern as enableChieftains().
+        // //added by ikill240c
+        getViewer().getLocalPlayer().enableMagic(RacesResources.INDEX_MAGIC_CONVERT, false); //added by ikill240c
+        getViewer().getLocalPlayer().enableChiefsCourage(false); //added by ikill240c
         final Player local_player = getViewer().getLocalPlayer();
         final Player enemy = getViewer().getWorld().getPlayers()[1];
         final Player guards = getViewer().getWorld().getPlayers()[2];

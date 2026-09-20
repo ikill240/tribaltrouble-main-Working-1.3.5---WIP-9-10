@@ -510,7 +510,10 @@ public class EditLine extends TextField implements Clipped {
             String text = (String) clipboard.getData(DataFlavor.stringFlavor);
             if (text == null || text.isEmpty()) return;
 
-            for (char c : text.toCharArray()) {
+            // was `for (char c : text.toCharArray())` - toCharArray() allocates a new array every call;
+            // charAt(i) avoids that allocation with identical behavior. //added by ikill240c 2026-09-10
+            for (int i = 0; i < text.length(); i++) {
+                char c = text.charAt(i);
                 if (!isAllowed(c)) return;
             }
 

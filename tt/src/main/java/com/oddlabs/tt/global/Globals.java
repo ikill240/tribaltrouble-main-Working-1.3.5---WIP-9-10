@@ -17,7 +17,7 @@ public final class Globals {
     public static final int[] LANDSCAPE_POLY_COUNT = new int[]{10000, 40000, 100000};
     public static final boolean[] INSERT_PLANTS = new boolean[]{true, true, true};
 
-    public static final boolean SHIPS_ENABLED = false;
+    public static final boolean SHIPS_ENABLED = true; //added by ikill240c - was false, disabling ship construction entirely regardless of every ship-behavior fix (boarding animation, collision shapes, row assignment) merged from boats_on_steam; none of those mattered while this single flag kept the build option from ever appearing at all
 
     public static final String GAME_NAME = "TribalTrouble";
     private static final String SETTINGS_FILE_NAME = "settings";
@@ -25,6 +25,22 @@ public final class Globals {
     private static final String SAVEGAMES_FILE_NAME = "savegames";
 
     private static final String PRESETS_FILE_NAME = "presets.json";
+
+    // Small persisted per-player skill estimate used to seed Adaptive AI's starting difficulty.
+    // Its own tiny properties file rather than a new Settings field, since it's numeric
+    // match-result data rather than a user preference. //added by ikill240c 2026-09-12
+    private static final String ADAPTIVE_AI_PROFILE_FILE_NAME = "adaptive_ai_profile.properties"; //added by ikill240c 2026-09-12
+    // Persisted play-style profile (aggression vs. economy focus) - see PlayerStyleProfile.
+    // //added by ikill240c 2026-09-12
+    private static final String PLAYER_STYLE_PROFILE_FILE_NAME = "player_style_profile.properties"; //added by ikill240c 2026-09-12
+    // Persisted per-(style context, behavior profile) win statistics - see AiBehaviorBandit.
+    // //added by ikill240c 2026-09-12
+    private static final String AI_BEHAVIOR_BANDIT_FILE_NAME = "ai_behavior_bandit.properties"; //added by ikill240c 2026-09-12
+    // Richer, segmented (race / map-size / difficulty) attack-pattern learning data - see
+    // PlayerBehaviorProfile. Kept as its own JSON file rather than folded into
+    // adaptive_ai_profile.properties, since it is structured (nested per-segment stats) rather than a
+    // handful of flat scalars. //added by ikill240c 2026-09-13
+    private static final String PLAYER_BEHAVIOR_PROFILE_FILE_NAME = "player_behavior_profile.json"; //added by ikill240c 2026-09-13
 
     public static @NonNull Path getSettingsFileName() {
         return steamPrefixed(SETTINGS_FILE_NAME);
@@ -37,6 +53,22 @@ public final class Globals {
     public static @NonNull Path getPresetsFileName() {
         return steamPrefixed(PRESETS_FILE_NAME);
     }
+
+    public static @NonNull Path getAdaptiveAiProfileFileName() { //added by ikill240c 2026-09-12
+        return steamPrefixed(ADAPTIVE_AI_PROFILE_FILE_NAME); //added by ikill240c 2026-09-12
+    } //added by ikill240c 2026-09-12
+
+    public static @NonNull Path getPlayerStyleProfileFileName() { //added by ikill240c 2026-09-12
+        return steamPrefixed(PLAYER_STYLE_PROFILE_FILE_NAME); //added by ikill240c 2026-09-12
+    } //added by ikill240c 2026-09-12
+
+    public static @NonNull Path getAiBehaviorBanditFileName() { //added by ikill240c 2026-09-12
+        return steamPrefixed(AI_BEHAVIOR_BANDIT_FILE_NAME); //added by ikill240c 2026-09-12
+    } //added by ikill240c 2026-09-12
+
+    public static @NonNull Path getPlayerBehaviorProfileFileName() { //added by ikill240c 2026-09-13
+        return steamPrefixed(PLAYER_BEHAVIOR_PROFILE_FILE_NAME); //added by ikill240c 2026-09-13
+    } //added by ikill240c 2026-09-13
 
     private static @NonNull Path steamPrefixed(@NonNull String name) {
         SteamManager steam = SteamManager.getInstance();

@@ -39,6 +39,13 @@ public final class PlacingDelegate extends ControllableCameraDelegate {
     private final BuildingSiteRenderer site_renderer = new BuildingSiteRenderer();
     private final int building_index;
     private final SpriteShader spriteShader = new SpriteShader();
+    // Tracks whether a building has already been placed by THIS delegate instance - the delegate stays
+    // alive across repeat placements while shift is held (see placeObject() below), so this is true from
+    // the second placement onward in the same shift-held streak. Used to decide whether to take over
+    // the builder(s) immediately (first placement) or queue behind whatever they're already doing
+    // (every placement after that), so buildings get worked on in click order instead of each new
+    // placement abandoning the previous one. //added by ikill240c
+    private boolean has_placed_once = false;
 
     public PlacingDelegate(@NonNull WorldViewer viewer, @NonNull CameraState old_camera, int building_index) {
         super(viewer, new GameCamera(viewer, old_camera));
@@ -61,13 +68,28 @@ public final class PlacingDelegate extends ControllableCameraDelegate {
             var peons = getViewer().getSelection().getCurrentSelection().filter(Abilities.BUILD);
             if (peons.length > 0) {
                 logger.info("placeObject: Placing building at " + placing_grid_x + "," + placing_grid_y);
+                // queue=has_placed_once: the first placement in a shift-held streak takes over the
+                // builder(s) immediately (matching normal, non-repeat placement); every placement after
+                // that in the same streak queues instead, so the buildings actually get built in the
+                // order they were clicked rather than each new click abandoning the previous site.
+                // //added by ikill240c
                 getViewer().getPeerHub().getPlayerInterface().placeBuilding(peons, building_index, placing_grid_x,
-                        placing_grid_y);
+                        placing_grid_y, has_placed_once);
+                has_placed_once = true; //added by ikill240c
             } else {
                 logger.info("placeObject: No peons selected");
             }
-            logger.info("placeObject: Popping delegate");
-            pop();
+            // Age of Empires 2-style repeat placement: holding Shift at the moment of a successful
+            // placement keeps this delegate active (skipping pop()) instead of exiting placement mode,
+            // so the same building type can be placed again immediately without reopening the menu.
+            // Checked here (rather than only in handleInput's UI_ACTIVATE branch) so it also covers the
+            // direct mousePressed(LEFT) path below. //added by ikill240c
+            if (Renderer.getLocalInput().isShiftDownCurrently()) {
+                logger.info("placeObject: Shift held, staying in placement mode");
+            } else {
+                logger.info("placeObject: Popping delegate");
+                pop();
+            }
         } else {
             logger.info("placeObject: Placement illegal");
         }

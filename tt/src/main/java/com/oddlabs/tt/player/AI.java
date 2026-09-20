@@ -360,8 +360,16 @@ public abstract class AI implements Animated {
         float RADIUS = 30;
         float target_x = owner.getStartX() + (random.nextFloat() * 2 - 1) * RADIUS;
         float target_y = owner.getStartY() + (random.nextFloat() * 2 - 1) * RADIUS;
-        return getUnitGrid().findGridTargets(UnitGrid.toGridCoordinate(target_x), UnitGrid.toGridCoordinate(target_y),
-                1, false)[0];
-
+        // findGridTargets(...)[0] can legitimately be null when no valid, unoccupied cell is found near
+        // the requested point (e.g. this random offset pushed the point out of the map's bounds, which
+        // is a real risk for scenarios whose start position sits near a map edge). Falling back to the
+        // player's exact start position (always valid) instead of crashing scenario startup entirely.
+        // //added by ikill240c
+        Target target = getUnitGrid().findGridTargets(UnitGrid.toGridCoordinate(target_x),
+                UnitGrid.toGridCoordinate(target_y), 1, false)[0];
+        if (target != null)
+            return target;
+        return getUnitGrid().findGridTargets(UnitGrid.toGridCoordinate(owner.getStartX()),
+                UnitGrid.toGridCoordinate(owner.getStartY()), 1, false)[0];
     }
 }

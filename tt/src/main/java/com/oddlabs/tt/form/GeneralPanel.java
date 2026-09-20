@@ -14,6 +14,8 @@ import com.oddlabs.tt.gui.EditLine;
 import com.oddlabs.tt.gui.HorizButton;
 import com.oddlabs.tt.gui.Skin;
 import com.oddlabs.tt.gui.Slider;
+import com.oddlabs.tt.player.AdaptiveAIProfile; //added by ikill240c
+import com.oddlabs.tt.player.PlayerBehaviorProfile; //added by ikill240c
 import com.oddlabs.tt.util.ServerMessageBundler;
 import org.jspecify.annotations.NonNull;
 
@@ -128,6 +130,24 @@ public class GeneralPanel extends Panel {
         cb_show_compass.place();
         group_show_compass.compileCanvas();
 
+        // Health halos - health_halos_enabled already existed as a Settings field with its i18n
+        // strings already in place too (it tints each unit/building's ground ring toward red as
+        // it takes damage - not a literal bar above the unit, despite how it's often described),
+        // and SelectableVisitor.getTeamColor() already checks it when deciding what color to
+        // draw. But nothing anywhere actually exposed a checkbox for it - confirmed by searching
+        // this whole form package for any reference - so nobody could ever turn it on short of
+        // hand-editing a settings file. Same group+CheckBox+addChild+place+compileCanvas pattern
+        // as cb_show_compass just above. //added by ikill240c
+        Group group_health_halos = new Group(); //added by ikill240c
+        addChild(group_health_halos); //added by ikill240c
+        CheckBox cb_health_halos = new CheckBox(Settings.getSettings().health_halos_enabled, //added by ikill240c
+                AbstractOptionsMenu.i18n("health_halos_enabled"), //added by ikill240c
+                AbstractOptionsMenu.i18n("health_halos_enabled_tip")); //added by ikill240c
+        cb_health_halos.addCheckBoxListener(marked -> Settings.getSettings().health_halos_enabled = marked); //added by ikill240c
+        group_health_halos.addChild(cb_health_halos); //added by ikill240c
+        cb_health_halos.place(); //added by ikill240c
+        group_health_halos.compileCanvas(); //added by ikill240c
+
         // Multiplayer domain
         Group group_domain = new Group();
         addChild(group_domain);
@@ -161,6 +181,33 @@ public class GeneralPanel extends Panel {
         btn_reset_domain.place(btn_update_domain, RIGHT_MID);
         group_domain.compileCanvas();
 
+        // Reset adaptive AI - "forgets" everything it has learned about this player (skill rating,
+        // attack-pattern habits) and reverts to fresh-install defaults, in case a player wants a
+        // clean slate rather than the AI continuing to calibrate against however past matches went.
+        // //added by ikill240c
+        Group group_adaptive_ai = new Group(); //added by ikill240c
+        addChild(group_adaptive_ai); //added by ikill240c
+        Label label_adaptive_ai = new Label(AbstractOptionsMenu.i18n("adaptive_ai_reset"), //added by ikill240c
+                Skin.getSkin().getEditFont()); //added by ikill240c
+        group_adaptive_ai.addChild(label_adaptive_ai); //added by ikill240c
+        Label label_adaptive_ai_done = new Label("", Skin.getSkin().getEditFont(), 150); //added by ikill240c
+        group_adaptive_ai.addChild(label_adaptive_ai_done); //added by ikill240c
+        HorizButton btn_reset_adaptive_ai = new HorizButton(AbstractOptionsMenu.i18n("adaptive_ai_reset_button"), 130); //added by ikill240c
+        btn_reset_adaptive_ai.addMouseClickListener((_, _, _, _) -> { //added by ikill240c
+            AdaptiveAIProfile.get().reset(); //added by ikill240c
+            // Also clears the segmented behavioral data (attack timing, target preference, etc.)
+            // that actually drives AdvancedAI's in-match adjustments - resetting only the seed
+            // rating while this richer data survived untouched wouldn't be a genuine reset.
+            // //added by ikill240c
+            PlayerBehaviorProfile.get().reset(); //added by ikill240c
+            label_adaptive_ai_done.set(AbstractOptionsMenu.i18n("adaptive_ai_reset_done")); //added by ikill240c
+        }); //added by ikill240c
+        group_adaptive_ai.addChild(btn_reset_adaptive_ai); //added by ikill240c
+        label_adaptive_ai.place(); //added by ikill240c
+        btn_reset_adaptive_ai.place(label_adaptive_ai, BOTTOM_LEFT); //added by ikill240c
+        label_adaptive_ai_done.place(btn_reset_adaptive_ai, RIGHT_MID); //added by ikill240c
+        group_adaptive_ai.compileCanvas(); //added by ikill240c
+
         // Placement
         group_gamespeed.place();
         group_mapmode.place(group_gamespeed, BOTTOM_LEFT);
@@ -168,7 +215,9 @@ public class GeneralPanel extends Panel {
         group_invert_camera.place(group_tooltip, BOTTOM_LEFT);
         group_aggressive_units.place(group_invert_camera, BOTTOM_LEFT);
         group_show_compass.place(group_aggressive_units, BOTTOM_LEFT);
-        group_domain.place(group_show_compass, BOTTOM_LEFT);
+        group_health_halos.place(group_show_compass, BOTTOM_LEFT); //added by ikill240c
+        group_domain.place(group_health_halos, BOTTOM_LEFT); //added by ikill240c - was anchored to group_show_compass directly; now chains through the new group_health_halos inserted right after it
+        group_adaptive_ai.place(group_domain, BOTTOM_LEFT); //added by ikill240c
         compileCanvas();
     }
 

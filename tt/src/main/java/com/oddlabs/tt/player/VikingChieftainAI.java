@@ -9,9 +9,9 @@ import org.jspecify.annotations.NonNull;
 import java.util.stream.StreamSupport;
 
 public final class VikingChieftainAI extends ChieftainAI {
-    private static final int NUM_UNITS_FOR_STUN = 10; //og 5
-    private static final int NUM_UNITS_FOR_BLAST = 15; //og 7
-    private static final int NUM_UNITS_FOR_CONVERT = 6;//added by ikill240
+    private static final int NUM_UNITS_FOR_STUN = 7; //og 5
+    private static final int NUM_UNITS_FOR_BLAST = 12; //og 7
+    private static final int NUM_UNITS_FOR_CONVERT = 15;//added by ikill240
 
     @Override
     public void decide(@NonNull Unit chieftain) {
@@ -28,8 +28,8 @@ public final class VikingChieftainAI extends ChieftainAI {
         int num_enemy_units = numEnemyUnits(chieftain.getOwner());
         int num_enemy_units_close = getNumEnemyUnitsClose(chieftain, hit_radius, Unit.class);
         if (num_enemy_units_close >= NUM_UNITS_FOR_STUN
-                || (num_enemy_units < NUM_UNITS_FOR_STUN && num_enemy_units_close > 1)
-                || (chieftain.getHitPoints() <= 2 && num_enemy_units_close > 1)) {
+                || (num_enemy_units < NUM_UNITS_FOR_STUN && num_enemy_units_close > 3)
+                || (chieftain.getHitPoints() <= 2 && num_enemy_units_close > 2)) {
             chieftain.doMagic(RacesResources.INDEX_MAGIC_STUN, false);
         }
     }
@@ -45,7 +45,7 @@ public final class VikingChieftainAI extends ChieftainAI {
         int num_friendly_units_close = getNumFriendlyUnitsClose(chieftain, hit_radius);
         if (2 * num_friendly_units_close < num_enemy_units_close
                 && (num_enemy_units_close >= NUM_UNITS_FOR_BLAST
-                        || (num_enemy_units < NUM_UNITS_FOR_BLAST && num_enemy_units_close > 2) //og 1
+                        || (num_enemy_units < NUM_UNITS_FOR_BLAST && num_enemy_units_close > 6) //og 1
                         || (chieftain.getHitPoints() <= 4 && num_enemy_units_close > 5))) { //og 2 & 1
             chieftain.doMagic(RacesResources.INDEX_MAGIC_BLAST, false);
         }
@@ -57,8 +57,11 @@ public final class VikingChieftainAI extends ChieftainAI {
 
         float hit_radius = chieftain.getOwner().getRace().getMagicFactory(
                 RacesResources.INDEX_MAGIC_CONVERT).getHitRadius();
+        int num_enemy_units = numEnemyUnits(chieftain.getOwner());
         int num_enemy_units_close = getNumEnemyUnitsClose(chieftain, hit_radius, Unit.class);
-        if (num_enemy_units_close >= NUM_UNITS_FOR_CONVERT) {
+        if (num_enemy_units_close >= NUM_UNITS_FOR_CONVERT
+                        || (num_enemy_units < NUM_UNITS_FOR_CONVERT && num_enemy_units_close > 4) //og 1
+                        || (chieftain.getHitPoints() <= 3 && num_enemy_units_close > 1)) {
             chieftain.doMagic(RacesResources.INDEX_MAGIC_CONVERT, false);
         }
     }

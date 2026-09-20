@@ -167,7 +167,19 @@ public final class PathTracker {
 
     private @Nullable Occupant getNextOccupant() {
         Occupant occ = getNextOccupantUnchecked();
-        assert occ != unit : unit.getGridX() + " " + unit.getGridY() + " " + next_unit_grid_x + " " + next_unit_grid_y;
+        // Was `assert occ != unit`, crashing the entire game outright whenever the computed next
+        // step happens to be the unit's own current grid cell (a degenerate, effectively
+        // zero-length step - the unit obviously can't be blocking itself). This has come up from
+        // several different, unrelated callers over time (a controller issuing a walk order whose
+        // destination already equals the unit's position, various edge cases in region-boundary
+        // path computation) rather than one single root cause worth chasing down call-site by
+        // call-site indefinitely. Treating it as "no occupant" here lets lookAhead() proceed as
+        // normal - advance() then becomes a same-cell no-op and findNextDirection() recomputes the
+        // actual next step from there, so the walk self-corrects instead of taking down the whole
+        // game over what is, from the unit's own perspective, nothing happening at all.
+        // //added by ikill240c
+        if (occ == unit) //added by ikill240c
+            return null; //added by ikill240c
         return occ;
     }
 

@@ -19,6 +19,11 @@ public final class PlayerSlot implements Serializable {
     public static final int AI_BATTLE_TUTORIAL = 6;
     public static final int AI_PASSIVE_CAMPAIGN = 7;
     public static final int AI_NEUTRAL_CAMPAIGN = 8;
+    // 9 is the next free value - AI_TOWER_TUTORIAL through AI_NEUTRAL_CAMPAIGN above already
+    // occupy 4-8, and these ints are transmitted over the network for lobby sync, so this can't
+    // reuse or renumber an existing value without breaking compatibility with anything that
+    // already expects the old numbering. //added by ikill240c
+    public static final int AI_INSANE = 9; //added by ikill240c
 
     public static final int OPEN = 1;
     public static final int CLOSED = 2;
@@ -62,7 +67,11 @@ public final class PlayerSlot implements Serializable {
         this.ready = ready;
     }
 
-    int getSlot() {
+    // Made public - WorldViewer (a different package) needs each retained slot's ORIGINAL index to
+    // assign the correct color after WorldStarter/ReplayWorldStarter compact out closed slots. Compacting
+    // filters the array but keeps the same PlayerSlot objects, so this value survives correctly.
+    // //added by ikill240c
+    public int getSlot() {
         return slot;
     }
 

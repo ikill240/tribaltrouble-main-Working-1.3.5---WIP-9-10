@@ -24,6 +24,19 @@ public final class ShipTrajectoryPoint {
         directionY = 1.0f;
     }
 
+    // Merged from boats_on_steam: world-coordinate constructor (as opposed to the grid-coordinate
+    // one above) - needed by ShipAllocation.updateIntermediate() for the boarding-animation
+    // feature, which computes a unit's boarding path between two exact world positions (the ship's
+    // entrance and the unit's final seat) rather than grid cells. //added by ikill240c
+    public ShipTrajectoryPoint(float x, float y) { //added by ikill240c
+        positionX = x; //added by ikill240c
+        positionY = y; //added by ikill240c
+        gridX = UnitGrid.toGridCoordinate(positionX); //added by ikill240c
+        gridY = UnitGrid.toGridCoordinate(positionY); //added by ikill240c
+        directionX = 0.0f; //added by ikill240c
+        directionY = 1.0f; //added by ikill240c
+    }
+
     public ShipTrajectoryPoint(int x, int y, float dx, float dy) {
         gridX = x;
         gridY = y;

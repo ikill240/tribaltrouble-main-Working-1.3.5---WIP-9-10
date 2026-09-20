@@ -76,6 +76,13 @@ public final class Settings implements Serializable {
     public boolean aggressive_units = false;
     public boolean show_compass = true;
     public boolean confine_cursor = true;
+    // Tints each unit/building's existing ground-halo (the same ring already used for team color
+    // and selection state) by current hit-point percentage when enabled - green at full health,
+    // red near death - instead of adding a separate floating health bar, which would need new
+    // screen-space rendering geometry this codebase doesn't already have proven working anywhere.
+    // See SelectableVisitor.getSelectionColor() for where the actual tint gets applied.
+    // //added by ikill240c
+    public boolean health_halos_enabled = false; //added by ikill240c
 
     // gameplay
     public int gamespeed = Game.GAMESPEED_NORMAL;
@@ -229,6 +236,7 @@ public final class Settings implements Serializable {
         setProperty(props, "aggressive_units", aggressive_units, defaults.aggressive_units);
         setProperty(props, "show_compass", show_compass, defaults.show_compass);
         setProperty(props, "confine_cursor", confine_cursor, defaults.confine_cursor);
+        setProperty(props, "health_halos_enabled", health_halos_enabled, defaults.health_halos_enabled); //added by ikill240c
         setProperty(props, "gamespeed", gamespeed, defaults.gamespeed);
         setProperty(props, "mapmode_delay", mapmode_delay, defaults.mapmode_delay);
         setProperty(props, "tooltip_delay", tooltip_delay, defaults.tooltip_delay);
@@ -295,6 +303,7 @@ public final class Settings implements Serializable {
         aggressive_units = getBoolean(props, "aggressive_units", aggressive_units);
         show_compass = getBoolean(props, "show_compass", show_compass);
         confine_cursor = getBoolean(props, "confine_cursor", confine_cursor);
+        health_halos_enabled = getBoolean(props, "health_halos_enabled", health_halos_enabled); //added by ikill240c
         gamespeed = getInt(props, "gamespeed", gamespeed);
         mapmode_delay = getFloat(props, "mapmode_delay", mapmode_delay);
         tooltip_delay = getFloat(props, "tooltip_delay", tooltip_delay);

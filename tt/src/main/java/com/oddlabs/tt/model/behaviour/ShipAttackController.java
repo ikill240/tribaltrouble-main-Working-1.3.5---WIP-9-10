@@ -25,7 +25,7 @@ public final class ShipAttackController extends Controller {
         this.ship = ship;
         this.allocation = allocation;
         this.scan_filter = filter;
-        this.ship_attack_behaviour = new ShipAttackBehaviour(this, unit, ship, allocation);
+        this.ship_attack_behaviour = new ShipAttackBehaviour(this, unit, ship, allocation, false); //added by ikill240c - new boarded=false: a freshly-created controller means the unit is just starting to board, not already seated
     }
 
     public final boolean shouldSleep(float t) {

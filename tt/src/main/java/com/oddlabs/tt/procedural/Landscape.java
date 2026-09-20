@@ -1,5 +1,6 @@
 package com.oddlabs.tt.procedural;
 
+import com.oddlabs.procedural.AuthoredTerrain;
 import com.oddlabs.procedural.Channel;
 import com.oddlabs.procedural.Layer;
 import com.oddlabs.procedural.Tools;
@@ -18,6 +19,7 @@ import com.oddlabs.util.Color;
 import com.oddlabs.util.Utils;
 import org.joml.Vector4fc;
 import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 import org.lwjgl.opengl.GL11;
 
 import com.oddlabs.tt.landscape.IslandInfo;
@@ -33,6 +35,46 @@ import java.util.Random;
 
 public final class Landscape {
     public static final boolean DEBUG = false;
+    // The only world sizes this class's constructor switch (below) actually knows how to configure
+    // (size_multiplier / height_scale / access_threshold). Exposed so callers that derive
+    // meters_per_world some other way - e.g. CustomMapGenerator, from an authored map file's actual
+    // pixel dimensions - can validate against the same authoritative list instead of duplicating it,
+    // and fail with a clear message of their own before ever reaching the `default` branch's bare
+    // assertion here (which has no context about which map/caller triggered it, and does nothing at
+    // all if assertions are disabled). //added by ikill240c 2026-09-14
+    public static final int[] VALID_METERS_PER_WORLD = {256, 512, 1024, 2048, 4096}; //added by ikill240c 2026-09-14
+    // erode()/erodeThermal() below (in Channel) run a full pass over the ENTIRE grid per iteration,
+    // and every call site here scales the iteration count linearly with unit_grids_per_world - so
+    // total erosion cost is iterations * width * height, which is CUBIC in the map's side length,
+    // not quadratic like the rest of generation. That scaling was only ever exercised up through
+    // 2048 (512 iterations there), where it was tolerable; naively continuing the same formula for
+    // a newer, larger tier multiplies total erosion work faster than the rest of generation scales
+    // by (cubic vs quadratic) - that compounding is what actually caused the freeze at the largest
+    // map size, not just "more pixels take longer". Capping the iteration count at what it already
+    // was for 2048 keeps every existing, already-tuned map size completely unchanged, and keeps any
+    // newer, larger tier's erosion cost proportional to its pixel count instead of its pixel count
+    // times an ever-growing iteration count. Erosion's visual effect also genuinely saturates after
+    // enough passes anyway (further iterations do less and less once most slopes have relaxed below
+    // the talus threshold), so this isn't just a speed/quality tradeoff - past a point, more
+    // iterations were already buying very little. //added by ikill240c 2026-09-18
+    private static final int MAX_ERODE_ITERATIONS = 2048 >> 2; //added by ikill240c 2026-09-18
+    private static final int MAX_ERODE_THERMAL_ITERATIONS = 2048 >> 3; //added by ikill240c 2026-09-18
+    // Channel.find()/findNoWrap() do an expanding ring search outward from a starting pixel, costing
+    // O(r) work per ring - so a full failed search out to radius r costs O(r^2) overall. Every call
+    // site below passes unit_grids_per_world >> 1 as that radius, several of them inside a
+    // per-starting-unit loop (once per player, again once per unit that player starts with) - so at
+    // the previous max map size (2048, radius 1024) a single worst-case search was already ~1M pixel
+    // checks, and a newer, larger tier multiplies that quadratically with radius, repeated for every
+    // player and every one of their starting units. That's the actual freeze this was capping
+    // erosion for above, just in the unit/building placement pass instead of erosion - erosion
+    // finishing didn't help because this runs afterward, unconditionally, on every game start
+    // regardless of map size. Capped at what the radius already was at 2048 (the largest tier that
+    // was ever actually exercised before any larger tier was added) for the same reason as the
+    // erosion cap: a ~1024-pixel search radius is already enormous for "find a buildable spot near
+    // the starting position" - if nothing turns up within that, searching even further out serves
+    // the "near start" intent poorly anyway, so there's no real downside to capping it here.
+    // //added by ikill240c 2026-09-18
+    private static final int MAX_PLACEMENT_SEARCH_RADIUS = 2048 >> 1; //added by ikill240c 2026-09-18
     private static final int STRUCTURE_SEED = 42; // must be constant; otherwise distinct repeating patterns might appear
 
     private static final int NUM_PLANT_TYPES = 4;
@@ -132,6 +174,15 @@ public final class Landscape {
     private final float build_threshold;
     private final @NonNull TerrainType terrain;
     private final boolean archipelago;
+    // When non-null, terrain generation branches to loadAuthoredHeight()/loadAuthoredSupplies()
+    // instead of the noise-driven generateTerrainNative()/Viking()/generateSupplies() paths - see
+    // those methods for exactly what's substituted and what's left unchanged. //added by ikill240c
+    private final @Nullable AuthoredTerrain authored_terrain; //added by ikill240c
+    // When true (and player_teams is non-null), generateUnitLocations()'s final placement step
+    // groups same-team players onto adjacent circle slots instead of a fully random shuffle - see
+    // that method's own comment for the exact algorithm. //added by ikill240c
+    private final boolean team_together; //added by ikill240c
+    private final int @Nullable [] player_teams; //added by ikill240c
 
     private byte @NonNull [] @NonNull [] build;
     private byte @NonNull [] @NonNull [] dock;
@@ -142,7 +193,11 @@ public final class Landscape {
 
     public Landscape(int num_players, int meters_per_world, @NonNull TerrainType terrain, float detail_alpha_value,
             float hills, float vegetation_amount, float supplies_amount, int seed, int initial_unit_count,
-            float random_start_pos, boolean archipelago) {
+            float random_start_pos, boolean archipelago, @Nullable AuthoredTerrain authored_terrain,
+            boolean team_together, int @Nullable [] player_teams) { //added by ikill240c
+        this.authored_terrain = authored_terrain; //added by ikill240c
+        this.team_together = team_together; //added by ikill240c
+        this.player_teams = player_teams; //added by ikill240c
         this.terrain = terrain;
         hills = (float) Math.sqrt(hills);
         this.num_players = num_players;
@@ -179,6 +234,22 @@ public final class Landscape {
                 height_scale = 56;
                 access_threshold = 0.0325f;
             }
+            case 4096 -> { //added by ikill240c - SIZE_UNREAL, 2x SIZE_ENORMOUS's side length (4x area)
+                // Not a strict continuation of any formula - size_multiplier's own growth rate
+                // already SLOWS at each existing tier (256->512 is 4x, 512->1024 is 4x, 1024->2048
+                // is only 2.5x), i.e. deliberately tempered down from a naive area-based scaling
+                // (which would give 64, not 40, at 2048) to avoid overcrowding a huge map with
+                // resources. Continuing that same slowing trend conservatively rather than guessing
+                // at an aggressive value with no way to playtest it here. height_scale and
+                // access_threshold are carried over unchanged from Enormous - both are about
+                // vertical exaggeration and walkable-slope feel respectively, neither obviously
+                // needs to change just because the map is wider. Re-tune any of these three if the
+                // actual in-game density/feel at this size isn't right - there was no way to verify
+                // that from here. //added by ikill240c
+                size_multiplier = 60; //added by ikill240c
+                height_scale = 56; //added by ikill240c
+                access_threshold = 0.0325f; //added by ikill240c
+            } //added by ikill240c
             default -> {
                 size_multiplier = 0;
                 assert false : "illegal meters_per_world";
@@ -231,14 +302,22 @@ public final class Landscape {
                 var natives = generateStructuresNative(voronoi4, voronoi8, voronoi8_hit, voronoi16, voronoi16_hit,
                         voronoi32, voronoi32_hit, noise8, noise256);
                 ProgressForm.progress();
-                generateTerrainNative();
+                if (authored_terrain != null) { //added by ikill240c
+                    loadAuthoredHeight(); //added by ikill240c
+                } else { //added by ikill240c
+                    generateTerrainNative();
+                } //added by ikill240c
                 yield natives;
             }
             case VIKING -> {
                 var vikings = generateStructuresViking(voronoi4, voronoi8, voronoi8_hit, voronoi16, voronoi16_hit,
                         voronoi32, voronoi32_hit, noise8, noise256);
                 ProgressForm.progress();
-                generateTerrainViking();
+                if (authored_terrain != null) { //added by ikill240c
+                    loadAuthoredHeight(); //added by ikill240c
+                } else { //added by ikill240c
+                    generateTerrainViking();
+                } //added by ikill240c
                 yield vikings;
             }
         };
@@ -282,7 +361,11 @@ public final class Landscape {
         Channel grass_alpha = generateAlphas();
         ProgressForm.progress();
         generateUnitLocations(initial_unit_count, random_start_pos);
-        generateSupplies(grass_alpha);
+        if (authored_terrain != null) { //added by ikill240c
+            loadAuthoredSupplies(); //added by ikill240c
+        } else { //added by ikill240c
+            generateSupplies(grass_alpha);
+        } //added by ikill240c
 
         // scale height map vertically
         for (int y = 0; y < unit_grids_per_world; y++) {
@@ -623,7 +706,7 @@ public final class Landscape {
             if (DEBUG) sub_islands.toLayer().saveAsPNG("sub_islands");
         }
 
-        height.erode((24f - hills * 12f) / unit_grids_per_world, unit_grids_per_world >> 2);
+        height.erode((24f - hills * 12f) / unit_grids_per_world, Math.min(unit_grids_per_world >> 2, MAX_ERODE_ITERATIONS)); //added by ikill240c 2026-09-18
         height.channelMultiply(shape.gamma2());
         height.smooth(1);
         height = Landscape.beaches(height);
@@ -677,7 +760,7 @@ public final class Landscape {
         }
 
         Channel hitpoint = voronoi.getHitpoint().smooth(1);
-        Channel hitpoint2 = hitpoint.copy().erodeThermal(4f / unit_grids_per_world, unit_grids_per_world >> 3);
+        Channel hitpoint2 = hitpoint.copy().erodeThermal(4f / unit_grids_per_world, Math.min(unit_grids_per_world >> 3, MAX_ERODE_THERMAL_ITERATIONS)); //added by ikill240c 2026-09-18
         Channel noise = new Midpoint(unit_grids_per_world, 3, 0.25f, seed).toChannel().threshold(0.75f * hills, 1f);
         Channel heightcut = hitpoint.channelMultiply(noise.copy().invert()).channelAdd(hitpoint2.copy().channelMultiply(
                 noise));
@@ -691,7 +774,7 @@ public final class Landscape {
             if (DEBUG) sub_islands.toLayer().saveAsPNG("sub_islands");
         }
 
-        height.erode((24f - hills * 12f) / unit_grids_per_world, unit_grids_per_world >> 2);
+        height.erode((24f - hills * 12f) / unit_grids_per_world, Math.min(unit_grids_per_world >> 2, MAX_ERODE_ITERATIONS)); //added by ikill240c 2026-09-18
 
         Channel shape = new Hill(unit_grids_per_world, Hill.SQUARE).toChannel().smoothGain().gamma8();
         height.channelMultiply(shape);
@@ -731,6 +814,54 @@ public final class Landscape {
         }
         access_exported = access.copy();
         if (DEBUG) access.toLayer().saveAsPNG("access");
+        build = Landscape.generateBuildMap(generateThresholdMap(slope, build_threshold).channelMultiply(access));
+    }
+
+    /**
+     * Populates height/slope/relheight/access/access_exported/build/water_map/dock_map/
+     * water/dock from an authored (hand-painted) height Channel instead of noise, used in place
+     * of generateTerrainNative()/generateTerrainViking() when authored_terrain != null. Mirrors
+     * the tail of those two methods EXACTLY (from generateWaterGrid() onward) so authored and
+     * procedural maps get identical derived data through identical code - the only difference is
+     * where `height` itself comes from.
+     *
+     * IMPORTANT: generateWaterGrid() is NOT optional here even though it looks unrelated to
+     * "height painting" - it populates water_map/dock_map AND the water/dock byte grids that
+     * getWaterGrid()/getDockGrid() return, purely by deriving from `height`. Skipping it would
+     * leave those fields null and getWaterGrid()/getDockGrid() would fail. //added by ikill240c
+     */
+    private void loadAuthoredHeight() { //added by ikill240c
+        // Missing this line is exactly what caused the NullPointerException in generateAlphas() -
+        // alpha_maps is allocated as the very first line of BOTH generateTerrainNative() and
+        // generateTerrainViking() (not anywhere in the shared derivation tail this method mirrors
+        // from generateWaterGrid() onward), so replacing those two methods entirely without this
+        // line left alpha_maps null going into generateAlphas(), which unconditionally writes
+        // alpha_maps[0] through [3]. //added by ikill240c
+        alpha_maps = new GLByteImage[7]; //added by ikill240c
+        height = authored_terrain.getHeightChannel();
+        // Same edge-zeroing generateTerrainNative()/Viking() apply to their noise-generated
+        // height before deriving anything from it, applied here too so an authored map gets the
+        // same guaranteed-water border the rest of the engine assumes exists at the map edge,
+        // regardless of what the editor's own tools did or didn't enforce.
+        for (int y = 0; y < unit_grids_per_world; y += (unit_grids_per_world - 1)) {
+            for (int x = 0; x < unit_grids_per_world; x++) {
+                height.putPixel(x, y, 0f);
+            }
+        }
+        for (int y = 1; y < unit_grids_per_world - 1; y++) {
+            for (int x = 0; x < unit_grids_per_world; x += (unit_grids_per_world - 1)) {
+                height.putPixel(x, y, 0f);
+            }
+        }
+
+        generateWaterGrid();
+
+        slope = height.copy().lineart();
+        relheight = height.copy().relativeIntensityNormalized(Math.max(1, unit_grids_per_world >> 5));
+        // Authored maps don't support archipelago mode (no sub-island noise to react to), so this
+        // always takes the non-archipelago branch that generateTerrainNative()/Viking() use.
+        access = generateThresholdMap(slope, access_threshold).largestConnected(1f);
+        access_exported = access.copy();
         build = Landscape.generateBuildMap(generateThresholdMap(slope, build_threshold).channelMultiply(access));
     }
 
@@ -1088,13 +1219,13 @@ public final class Landscape {
         int num_iron = 1;
         for (int p = 0; p < num_players; p++) {
             for (int r = 0; r < num_rock; r++) {
-                int[] location = access.find((unit_grids_per_world >> 1), supply_locations[p][0],
+                int[] location = access.find(Math.min(unit_grids_per_world >> 1, MAX_PLACEMENT_SEARCH_RADIUS), supply_locations[p][0],
                         supply_locations[p][1], 1f);
                 rock.putPixel(location[0], location[1], 1f);
                 access.putPixel(location[0], location[1], 0f);
             }
             for (int i = 0; i < num_iron; i++) {
-                int[] location = access.find((unit_grids_per_world >> 1), supply_locations[p][0],
+                int[] location = access.find(Math.min(unit_grids_per_world >> 1, MAX_PLACEMENT_SEARCH_RADIUS), supply_locations[p][0],
                         supply_locations[p][1], 1f);
                 iron.putPixel(location[0], location[1], 1f);
                 access.putPixel(location[0], location[1], 0f);
@@ -1125,6 +1256,80 @@ public final class Landscape {
         place = placePlants(plants2, place, 64, max_plants >> 2, 1);
         place = placePlants(plants3, place, 64, max_plants >> 2, 2);
         place = placePlants(plants4, place, 64, max_plants >> 2, 3);
+    }
+
+    /**
+     * Populates trees/palmtrees/rock/iron from authored_terrain's placed resource list instead of
+     * the procedural probability-map scatter in generateSupplies(), used in place of that method
+     * when authored_terrain != null. Skips the entire noise-driven probability-map machinery
+     * (Hill/Midpoint channels, native/viking-specific tree/rock probability shaping, the "extra
+     * guaranteed resources near start" logic) since none of that applies once placement is
+     * already decided by hand.
+     *
+     * IMPORTANT, found only by tracing generateSupplies() in full: alpha_maps[4]/alpha_maps[5]
+     * and the `plants` field are BOTH only ever assigned inside generateSupplies() itself, never
+     * in generateAlphas() (which only initializes the underlying shadow/highlight Channels, not
+     * the GLByteImage wrappers or the plants array). Skipping generateSupplies() entirely without
+     * setting these explicitly would leave them null - and the constructor's blend_infos array
+     * construction, and getPlants(), both dereference them unconditionally right after this
+     * runs. //added by ikill240c
+     */
+    private void loadAuthoredSupplies() { //added by ikill240c
+        trees = new Channel(unit_grids_per_world, unit_grids_per_world);
+        palmtrees = new Channel(unit_grids_per_world, unit_grids_per_world);
+        rock = new Channel(unit_grids_per_world, unit_grids_per_world);
+        iron = new Channel(unit_grids_per_world, unit_grids_per_world);
+        int placed = 0; //added by ikill240c
+        int skipped = 0; //added by ikill240c
+        for (AuthoredTerrain.ResourceNode node : authored_terrain.getResources()) {
+            Channel target = switch (node.type()) {
+                case TREE -> trees;
+                case PALM_TREE -> palmtrees;
+                case ROCK -> rock;
+                case IRON -> iron;
+            };
+            // Skip entirely if this cell isn't actually available - either because a player
+            // start/quarters/armory footprint already claimed it (access already reflects that,
+            // since generateUnitLocations() runs before this method), it's off the map, or an
+            // earlier resource in THIS SAME LOOP already placed something here (e.g. two authored
+            // nodes landing on the same or an adjacent cell, easy to do by clicking twice in the
+            // editor). Without this check, two game objects trying to occupy the same grid cell
+            // crashes later in World's constructor with an AssertionError - two objects can never
+            // share one cell. getPixelSafe() (not getPixel()) throughout, since an authored
+            // coordinate from a hand-edited or corrupted file could be out of bounds, and this
+            // should skip that gracefully rather than throw. //added by ikill240c
+            if (access.getPixelSafe(node.x(), node.y()) <= 0f //added by ikill240c
+                    || trees.getPixelSafe(node.x(), node.y()) > 0f //added by ikill240c
+                    || palmtrees.getPixelSafe(node.x(), node.y()) > 0f //added by ikill240c
+                    || rock.getPixelSafe(node.x(), node.y()) > 0f //added by ikill240c
+                    || iron.getPixelSafe(node.x(), node.y()) > 0f) { //added by ikill240c
+                skipped++; //added by ikill240c
+                continue; //added by ikill240c
+            }
+            // getPositions() (backing getTrees()/getRock()/etc.) scans for pixels valued exactly
+            // 1f, so this must write exactly 1f, not some other truthy value.
+            target.putPixelSafe(node.x(), node.y(), 1f);
+            placed++; //added by ikill240c
+        }
+        if (skipped > 0) { //added by ikill240c
+            IO.println("Authored resources: " + placed + " placed, " + skipped //added by ikill240c
+                    + " skipped (occupied, overlapping, or off-map position)"); //added by ikill240c
+        } //added by ikill240c
+        access.channelSubtract(trees);
+        access.channelSubtract(palmtrees);
+        access.channelSubtract(rock);
+        access.channelSubtract(iron);
+        shadow.channelBrightest(rock.copy().multiply(0.5f));
+        shadow.channelBrightest(iron.copy().multiply(0.5f));
+
+        // Required fix - see method comment above: without these two lines, both the
+        // blend_infos construction just after this method runs and getPlants() afterward would
+        // throw a NullPointerException. //added by ikill240c
+        alpha_maps[4] = new GLByteImage(highlight, GL11.GL_RED);
+        alpha_maps[5] = new GLByteImage(shadow, GL11.GL_RED);
+        // No decorative plants for authored maps yet - an empty (all-zero) array is a valid,
+        // safe "zero plants placed" state for getPlants()'s consumers.
+        plants = new float[NUM_PLANT_TYPES][max_plants << 1];
     }
 
     // place supplies on map
@@ -1260,7 +1465,34 @@ public final class Landscape {
             int x = (int) (radius * (float) Math.cos(angle) + (unit_grids_per_world >> 1) + 0.5f);
             int y = (int) (radius * (float) Math.sin(angle) + (unit_grids_per_world >> 1) + 0.5f);
             angle += angle_step;
-            location_quarters = buildmap.findNoWrap((unit_grids_per_world >> 1), x, y, 1f);
+            // Authored start override - falls back to the procedural circular position above if
+            // this player index has no authored start (e.g. the map was painted for fewer
+            // players than the lobby chose), rather than crashing outright. The footprint
+            // clearing and initial-unit placement below this point are identical either way -
+            // only the candidate x/y source differs. //added by ikill240c
+            if (authored_terrain != null) { //added by ikill240c
+                for (AuthoredTerrain.StartPosition start : authored_terrain.getStarts()) { //added by ikill240c
+                    if (start.player_index() == i) { //added by ikill240c
+                        x = start.x(); //added by ikill240c
+                        y = start.y(); //added by ikill240c
+                        break; //added by ikill240c
+                    } //added by ikill240c
+                } //added by ikill240c
+            } //added by ikill240c
+            location_quarters = buildmap.findNoWrap(Math.min(unit_grids_per_world >> 1, MAX_PLACEMENT_SEARCH_RADIUS), x, y, 1f);
+            // findNoWrap() returns the {-1, -1} sentinel if it searched the whole radius around
+            // (x, y) without finding any buildable spot at all, clipped at the map edge - possible
+            // with a start position near the edge of a small/custom-generated map. Falling through
+            // with -1, -1 used as a real position doesn't just look wrong: passed into the wrapping
+            // find() below for the armory search, it would wrap to the opposite corner of the map
+            // and could still land somewhere illegal, or previously crashed outright before find()
+            // was made wrap-safe (see Channel.find()). Retrying with the wrapping find() - which
+            // searches strictly more area than findNoWrap did, since it continues across the map
+            // edge instead of stopping there - gives this a real chance of finding a valid spot
+            // instead of just reproducing the same failure. //added by ikill240c 2026-09-12
+            if (location_quarters[0] == -1 && location_quarters[1] == -1) { //added by ikill240c 2026-09-12
+                location_quarters = buildmap.find(Math.min(unit_grids_per_world >> 1, MAX_PLACEMENT_SEARCH_RADIUS), x, y, 1f); //added by ikill240c 2026-09-12
+            } //added by ikill240c 2026-09-12
             for (int k = -(RacesResources.QUARTERS_SIZE/* - 1*/); k <= (RacesResources.QUARTERS_SIZE/* - 1*/); k++) {
                 for (int l = -(RacesResources.QUARTERS_SIZE/* - 1*/); l <= (RacesResources.QUARTERS_SIZE/* - 1*/); l++) {
                     access.putPixelWrap(location_quarters[0] + k, location_quarters[1] + l, 0f);
@@ -1268,7 +1500,7 @@ public final class Landscape {
                     buildmap.putPixelWrap(location_quarters[0] + k, location_quarters[1] + l, 0f);
                 }
             }
-            location_armory = buildmap.find((unit_grids_per_world >> 1), location_quarters[0], location_quarters[1],
+            location_armory = buildmap.find(Math.min(unit_grids_per_world >> 1, MAX_PLACEMENT_SEARCH_RADIUS), location_quarters[0], location_quarters[1],
                     1f);
             for (int k = -(RacesResources.ARMORY_SIZE/* - 1*/); k <= (RacesResources.ARMORY_SIZE/* - 1*/); k++) {
                 for (int l = -(RacesResources.ARMORY_SIZE/* - 1*/); l <= (RacesResources.ARMORY_SIZE/* - 1*/); l++) {
@@ -1279,10 +1511,10 @@ public final class Landscape {
             }
             int[] location_unit_start;
             if (archipelago) {
-                location_unit_start = good_starts.find((unit_grids_per_world >> 1), location_quarters[0],
+                location_unit_start = good_starts.find(Math.min(unit_grids_per_world >> 1, MAX_PLACEMENT_SEARCH_RADIUS), location_quarters[0],
                         location_quarters[1], 1f);
             } else {
-                location_unit_start = access.find((unit_grids_per_world >> 1), location_quarters[0],
+                location_unit_start = access.find(Math.min(unit_grids_per_world >> 1, MAX_PLACEMENT_SEARCH_RADIUS), location_quarters[0],
                         location_quarters[1], 1f);
             }
             supply_locations[i][0] = location_armory[0];
@@ -1290,10 +1522,10 @@ public final class Landscape {
             int[] location_unit = new int[2];
             for (int u = 0; u < initial_unit_count; u++) {
                 if (archipelago) {
-                    location_unit = good_starts.find((unit_grids_per_world >> 1), location_unit_start[0],
+                    location_unit = good_starts.find(Math.min(unit_grids_per_world >> 1, MAX_PLACEMENT_SEARCH_RADIUS), location_unit_start[0],
                             location_unit_start[1], 1f);
                 } else {
-                    location_unit = access.find((unit_grids_per_world >> 1), location_unit_start[0],
+                    location_unit = access.find(Math.min(unit_grids_per_world >> 1, MAX_PLACEMENT_SEARCH_RADIUS), location_unit_start[0],
                             location_unit_start[1], 1f);
                 }
                 access.putPixelWrap(location_unit[0], location_unit[1], 0f);
@@ -1305,7 +1537,40 @@ public final class Landscape {
 
         // shuffle player starting locations
         List<float[]> player_locations_list = Arrays.asList(player_locations);
-        Collections.shuffle(player_locations_list, random);
+        // "Team together": group same-team players onto adjacent circle slots (slots 0..n-1 were
+        // just assigned in order, evenly spaced around the circle above, so adjacent slot indices
+        // ARE adjacent physical positions) instead of the fully-random per-player shuffle below.
+        // Falls back to the original unconditional shuffle whenever the feature isn't actually
+        // usable (no team data, or a mismatched array - e.g. an older network peer, or a caller
+        // that legitimately has no real roster like the decorative main-menu background world),
+        // so this never changes behavior unless a caller explicitly opted in with real data.
+        // Both branches only ever call random's own shuffle methods, in a fixed order determined
+        // solely by player_teams' contents (identical on every peer in a lockstep game), so this
+        // stays fully deterministic either way. //added by ikill240c
+        if (team_together && player_teams != null && player_teams.length == num_players) { //added by ikill240c
+            Map<Integer, List<Integer>> by_team = new LinkedHashMap<>(); //added by ikill240c
+            for (int i = 0; i < num_players; i++) { //added by ikill240c
+                by_team.computeIfAbsent(player_teams[i], _k -> new ArrayList<>()).add(i); //added by ikill240c
+            } //added by ikill240c
+            List<Integer> team_order = new ArrayList<>(by_team.keySet()); //added by ikill240c
+            Collections.shuffle(team_order, random); //added by ikill240c
+            List<Integer> grouped_order = new ArrayList<>(num_players); //added by ikill240c
+            for (int team : team_order) { //added by ikill240c
+                List<Integer> members = by_team.get(team); //added by ikill240c
+                Collections.shuffle(members, random); //added by ikill240c
+                grouped_order.addAll(members); //added by ikill240c
+            } //added by ikill240c
+            // grouped_order[s] is the player index that should occupy circle slot s - i.e. the
+            // player at grouped position s inherits the location generated for slot s above.
+            // //added by ikill240c
+            float[][] regrouped = new float[num_players][]; //added by ikill240c
+            for (int slot = 0; slot < num_players; slot++) { //added by ikill240c
+                regrouped[grouped_order.get(slot)] = player_locations[slot]; //added by ikill240c
+            } //added by ikill240c
+            player_locations = regrouped; //added by ikill240c
+        } else { //added by ikill240c
+            Collections.shuffle(player_locations_list, random);
+        } //added by ikill240c
     }
 
 
@@ -1483,6 +1748,58 @@ public final class Landscape {
 
     public float getSeaLevelMeters() {
         return sea_level_meters;
+    }
+
+    /**
+     * Builds an AuthoredTerrain snapshot of this Landscape's current state, so a map generated in
+     * a normal singleplayer or multiplayer game (procedurally, or even an already-authored map
+     * that's since had gameplay run on it) can be saved as a .ttmap and opened for further editing
+     * - not just maps that started life in the standalone editor.
+     *
+     * <p>Only the FIRST starting unit's position is used as each player's spawn point
+     * (player_locations[i][0]/[1]) - player_locations holds every initial unit's position packed
+     * as (x0,y0,x1,y1,...) per player (see generateUnitLocations()), but AuthoredTerrain's
+     * StartPosition is a single representative spawn point per player, matching what the map
+     * editor itself produces when a player places one Start marker. Coordinates are converted
+     * from world meters back to grid units (dividing by HeightMap.METERS_PER_UNIT_GRID) to match
+     * AuthoredTerrain's grid-coordinate convention throughout.
+     *
+     * <p>This lives here (in the tt module) rather than as a constructor/factory on
+     * AuthoredTerrain itself (in the common module) because common cannot depend on tt's
+     * Landscape class - only tt is allowed to depend on common, not the reverse.
+     * //added by ikill240c
+     */
+    public @NonNull AuthoredTerrain exportToAuthoredTerrain() { //added by ikill240c
+        int w = height.getWidth(); //added by ikill240c
+        int h = height.getHeight(); //added by ikill240c
+        Channel exported_height = new Channel(w, h); //added by ikill240c
+        float[][] source_pixels = height.getPixels(); //added by ikill240c
+        float[][] dest_pixels = exported_height.getPixels(); //added by ikill240c
+        for (int y = 0; y < h; y++) { //added by ikill240c
+            System.arraycopy(source_pixels[y], 0, dest_pixels[y], 0, w); //added by ikill240c
+        } //added by ikill240c
+        AuthoredTerrain terrain = new AuthoredTerrain(exported_height); //added by ikill240c
+        for (int[] pos : getTrees()) { //added by ikill240c
+            terrain.addResource(AuthoredTerrain.ResourceType.TREE, pos[0], pos[1]); //added by ikill240c
+        } //added by ikill240c
+        for (int[] pos : getPalmtrees()) { //added by ikill240c
+            terrain.addResource(AuthoredTerrain.ResourceType.PALM_TREE, pos[0], pos[1]); //added by ikill240c
+        } //added by ikill240c
+        for (int[] pos : getRock()) { //added by ikill240c
+            terrain.addResource(AuthoredTerrain.ResourceType.ROCK, pos[0], pos[1]); //added by ikill240c
+        } //added by ikill240c
+        for (int[] pos : getIron()) { //added by ikill240c
+            terrain.addResource(AuthoredTerrain.ResourceType.IRON, pos[0], pos[1]); //added by ikill240c
+        } //added by ikill240c
+        for (int player_index = 0; player_index < player_locations.length; player_index++) { //added by ikill240c
+            float[] locations = player_locations[player_index]; //added by ikill240c
+            if (locations.length < 2) //added by ikill240c
+                continue; // no starting unit recorded for this player slot //added by ikill240c
+            int grid_x = Math.round(locations[0] / HeightMap.METERS_PER_UNIT_GRID); //added by ikill240c
+            int grid_y = Math.round(locations[1] / HeightMap.METERS_PER_UNIT_GRID); //added by ikill240c
+            terrain.addStart(player_index, grid_x, grid_y); // team defaults to -1 - not tracked by a live game world //added by ikill240c
+        } //added by ikill240c
+        return terrain; //added by ikill240c
     }
 
 }

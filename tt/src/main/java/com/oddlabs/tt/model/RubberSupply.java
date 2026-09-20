@@ -23,7 +23,7 @@ public final class RubberSupply extends SupplyModel implements Animated, Movable
     private static final float METERS_PER_SECOND = 3.5f;//og 8f
 
     private static final int INITIAL_SUPPLIES = 3;//og 1;
-    private static final int MAX_MOVE_GRIDS = 150;//og 5;
+    private static final int MAX_MOVE_GRIDS = 100;//og 5;
 
     public enum Animation {
         IDLING(1f / (50f / 25f)),
@@ -172,6 +172,17 @@ public final class RubberSupply extends SupplyModel implements Animated, Movable
                 int new_grid_x = start_grid_x + (int) ((getWorld().getRandom().nextFloat() * 2 - 1) * MAX_MOVE_GRIDS);
                 int new_grid_y = start_grid_y + (int) ((getWorld().getRandom().nextFloat() * 2 - 1) * MAX_MOVE_GRIDS);
                 Target target = getWorld().getUnitGrid().findGridTargets(new_grid_x, new_grid_y, 1, false)[0];
+                // findGridTargets() can legitimately return a null-padded slot when no valid, unoccupied
+                // grid cell is found within range of the requested point (e.g. the random offset above
+                // pushed new_grid_x/new_grid_y out of the map's bounds, or into a fully blocked/water
+                // area) - FindTargetsFilter's backing array starts all-null and is only filled as real
+                // cells are found. Passing that null straight into TargetTrackerAlgorithm crashed the
+                // whole game the next time its target was dereferenced (NullPointerException in
+                // TargetTrackerAlgorithm.findPathRegion() via PathTracker). Skipping the fly-attempt for
+                // this tick when no target is found is harmless here - it's cosmetic wildlife AI, so the
+                // animal just tries again on its next idle cycle. //added by ikill240c
+                if (target == null)
+                    return;
                 path_tracker.setTarget(new TargetTrackerAlgorithm(getWorld().getUnitGrid(), 0f, target));
                 float move_random = getWorld().getRandom().nextFloat();
                 if (move_random < .25f) {

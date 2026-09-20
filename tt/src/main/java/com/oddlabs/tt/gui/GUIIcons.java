@@ -311,7 +311,12 @@ public class GUIIcons {
     }
 
     public final @NonNull IconQuad getWatch(float progress) {
-        return watch[(int) (progress * (watch.length - 1))];
+        // Defensively clamp rather than trust every caller to pre-clamp its own progress value -
+        // this exact array indexed straight off an un-clamped ratio > 1.0 (from a health multiplier
+        // elsewhere dividing by the wrong denominator) and threw ArrayIndexOutOfBoundsException.
+        // //added by ikill240c 2026-09-12
+        float clamped = Math.clamp(progress, 0f, 1f); //added by ikill240c 2026-09-12
+        return watch[(int) (clamped * (watch.length - 1))];
     }
 
     public final @NonNull IconQuad getInfinite() {

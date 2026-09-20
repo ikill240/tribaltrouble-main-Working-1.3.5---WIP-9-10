@@ -15,6 +15,9 @@ import java.util.ResourceBundle;
 /** A spinner control with an associated icon. */
 public abstract class IconSpinner extends GUIObject {
     private static final ResourceBundle bundle = ResourceBundle.getBundle(IconSpinner.class.getName());
+    // See IncreaseListener.mousePressed()'s comment for why this isn't Integer.MAX_VALUE.
+    // //added by ikill240c
+    private static final int MAX_DEPLOY_AMOUNT = 1_000_000; //added by ikill240c
 
     private @NonNull String i18n(@NonNull String key, @NonNull Object @NonNull... args) {
         return Utils.getBundleString(bundle, key, args);
@@ -58,9 +61,17 @@ public abstract class IconSpinner extends GUIObject {
         button_minus.addMouseButtonListener(new DecreaseListener());
         addChild(button_minus);
 
-        label = new Label("", Skin.getSkin().getHeadlineFont(), icon_quad.quad(ModeIconQuads.Mode.NORMAL).getWidth(),
+        // Was icon_quad.quad(...).getWidth() - the icon's own width, comfortably fitting 1-2 digit
+        // counts but clipping anything from 100 upward (and this game's production caps can now
+        // reach into the hundreds). font.getWidth("999") sizes the label to fit any 3-digit count
+        // without clipping; centered on the icon (via the x-offset below) since Origin.AT_MIDDLE
+        // only centers the text WITHIN whatever box setDim() gives it, not relative to the icon
+        // itself. //added by ikill240c
+        int icon_width = icon_quad.quad(ModeIconQuads.Mode.NORMAL).getWidth(); //added by ikill240c
+        int label_width = Math.max(icon_width, Skin.getSkin().getHeadlineFont().getWidth("999")); //added by ikill240c
+        label = new Label("", Skin.getSkin().getHeadlineFont(), label_width, //added by ikill240c
                 Origin.AT_MIDDLE);
-        label.setPos(0, (getHeight() - label.getHeight()) / 2);
+        label.setPos((icon_width - label_width) / 2, (getHeight() - label.getHeight()) / 2); //added by ikill240c
         addChild(label);
     }
 
@@ -180,7 +191,23 @@ public abstract class IconSpinner extends GUIObject {
 
         @Override
         public void mousePressed(@NonNull MouseButton button, int x, int y) {
-            increase(button == MouseButton.RIGHT ? 10 : 1);
+            // Shift+click deploys/gathers as many as are actually available in one go, rather than
+            // the usual +1 (left click) / +10 (right click) increments - increase(int) already
+            // clamps its argument down to whatever's really available (units in stock, supply
+            // remaining, ship capacity, etc. depending on which DeploySpinner subclass this is).
+            // Deliberately NOT Integer.MAX_VALUE: DeploySpinner's ship branch computes
+            // "order_size + amount > num_units" before clamping, and order_size (already positive)
+            // plus Integer.MAX_VALUE overflows to a negative int in Java's wraparound arithmetic -
+            // making that comparison false, skipping the clamp entirely, and leaving amount at
+            // Integer.MAX_VALUE for the subsequent order_size += amount, corrupting it. A bounded
+            // sentinel far larger than any realistic unit/supply count in this game avoids that
+            // failure mode while still always resolving to the true maximum in practice.
+            // //added by ikill240c
+            if (Renderer.getLocalInput().isShiftDownCurrently()) { //added by ikill240c
+                increase(MAX_DEPLOY_AMOUNT); //added by ikill240c
+            } else { //added by ikill240c
+                increase(button == MouseButton.RIGHT ? 10 : 1);
+            } //added by ikill240c
         }
 
         @Override
@@ -201,7 +228,18 @@ public abstract class IconSpinner extends GUIObject {
 
         @Override
         public void mousePressed(@NonNull MouseButton button, int x, int y) {
-            decrease(button == MouseButton.RIGHT ? 10 : 1);
+            // Matches the increase side's shift behavior, but as a fixed amount (100) rather than
+            // "however much is available" - decrease has no equivalent "maximum" to resolve to
+            // (the floor is always 0), so a large fixed step is the natural counterpart here.
+            // 100 is a plain literal (not MAX_DEPLOY_AMOUNT) since decrease()'s clamping doesn't
+            // have the same overflow-prone "add before clamp" shape the ship branch of increase()
+            // does, but there's no reason to risk it by reusing a million-sized constant for a
+            // decrement anyway. //added by ikill240c
+            if (Renderer.getLocalInput().isShiftDownCurrently()) { //added by ikill240c
+                decrease(100); //added by ikill240c
+            } else { //added by ikill240c
+                decrease(button == MouseButton.RIGHT ? 10 : 1);
+            } //added by ikill240c
         }
 
         @Override

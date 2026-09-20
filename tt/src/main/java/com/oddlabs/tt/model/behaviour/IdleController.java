@@ -2,8 +2,8 @@ package com.oddlabs.tt.model.behaviour;
 
 import com.oddlabs.tt.landscape.LandscapeTarget;
 import com.oddlabs.tt.model.Abilities;
-import com.oddlabs.tt.model.AttackScanFilter;
 import com.oddlabs.tt.model.Selectable;
+import com.oddlabs.tt.model.TargetPickingScanFilter; //added by ikill240c
 import com.oddlabs.tt.model.Unit;
 import org.jspecify.annotations.NonNull;
 
@@ -12,12 +12,16 @@ public final class IdleController extends Controller {
     private static final float MAX_SCAN_DELAY = 2f;
 
     private final @NonNull Unit unit;
-    private final @NonNull AttackScanFilter scan_filter;
+    // TargetPickingScanFilter rather than the concrete AttackScanFilter, so a tower-mounted unit
+    // can be constructed with a TowerAttackScanFilter instead (see Unit's tower-mount code) without
+    // this controller needing to know or care which targeting strategy it's using.
+    // //added by ikill240c
+    private final @NonNull TargetPickingScanFilter scan_filter; //added by ikill240c
     private final @NonNull IdleBehaviour idle_behaviour;
     private final boolean can_move;
     private float redecide_time;
 
-    public IdleController(@NonNull Unit unit, @NonNull AttackScanFilter filter, boolean can_move) {
+    public IdleController(@NonNull Unit unit, @NonNull TargetPickingScanFilter filter, boolean can_move) { //added by ikill240c
         super(0);
         this.unit = unit;
         this.scan_filter = filter;

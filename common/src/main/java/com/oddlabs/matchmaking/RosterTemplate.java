@@ -24,6 +24,7 @@ public final class RosterTemplate implements Serializable {
         EASY_AI,
         NORMAL_AI,
         HARD_AI,
+        INSANE_AI, //added by ikill240c
     }
 
     public static final class Slot implements Serializable {

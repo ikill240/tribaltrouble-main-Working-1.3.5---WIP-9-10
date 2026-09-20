@@ -9,9 +9,9 @@ import org.jspecify.annotations.NonNull;
 import java.util.stream.StreamSupport;
 
 public final class NativeChieftainAI extends ChieftainAI {
-    private static final int NUM_UNITS_FOR_LIGHTNING = 3;//og2
-    private static final int NUM_UNITS_FOR_POISON = 9;//og 5
-    private static final int NUM_UNITS_FOR_CONVERT = 5;//og 1//added by ikill240
+    private static final int NUM_UNITS_FOR_LIGHTNING = 8;//og2
+    private static final int NUM_UNITS_FOR_POISON = 10;//og 5
+    private static final int NUM_UNITS_FOR_CONVERT = 15;//og 1//added by ikill240
 
     @Override
     public void decide(@NonNull Unit chieftain) {
@@ -28,7 +28,7 @@ public final class NativeChieftainAI extends ChieftainAI {
         int num_enemy_units = numEnemyUnits(chieftain.getOwner());
         int num_enemy_units_close = getNumEnemyUnitsClose(chieftain, hit_radius);
         if (num_enemy_units_close >= NUM_UNITS_FOR_LIGHTNING
-                || (num_enemy_units < NUM_UNITS_FOR_LIGHTNING && num_enemy_units_close > 1)
+                || (num_enemy_units < NUM_UNITS_FOR_LIGHTNING && num_enemy_units_close > 2)
                 || (chieftain.getHitPoints() <= 2 && num_enemy_units_close > 1)) {
             chieftain.doMagic(RacesResources.INDEX_MAGIC_LIGHTNING, false);
         }
@@ -45,7 +45,7 @@ public final class NativeChieftainAI extends ChieftainAI {
         int num_friendly_units_close = getNumFriendlyUnitsClose(chieftain, hit_radius);
         if (2 * num_friendly_units_close < num_enemy_units_close
                 && (num_enemy_units_close >= NUM_UNITS_FOR_POISON
-                        || (num_enemy_units < NUM_UNITS_FOR_POISON && num_enemy_units_close > 1)
+                        || (num_enemy_units < NUM_UNITS_FOR_POISON && num_enemy_units_close > 4)
                         || (chieftain.getHitPoints() <= 2 && num_enemy_units_close > 5))) {//OG 2 & 1
             chieftain.doMagic(RacesResources.INDEX_MAGIC_POISON, false);
         }
@@ -57,8 +57,11 @@ public final class NativeChieftainAI extends ChieftainAI {
 
         float hit_radius = chieftain.getOwner().getRace().getMagicFactory(
                 RacesResources.INDEX_MAGIC_CONVERT).getHitRadius();
+        int num_enemy_units = numEnemyUnits(chieftain.getOwner());
         int num_enemy_units_close = getNumEnemyUnitsClose(chieftain, hit_radius);
-        if (num_enemy_units_close >= NUM_UNITS_FOR_CONVERT) {
+        if (num_enemy_units_close >= NUM_UNITS_FOR_CONVERT
+                        || (num_enemy_units < NUM_UNITS_FOR_CONVERT && num_enemy_units_close > 3) //og 1
+                        || (chieftain.getHitPoints() <= 3 && num_enemy_units_close > 2)) {
             chieftain.doMagic(RacesResources.INDEX_MAGIC_CONVERT, false);
         }
     }

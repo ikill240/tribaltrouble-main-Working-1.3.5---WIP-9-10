@@ -27,12 +27,22 @@ public final class Main {
             }
             String error = i18n("error");
             String error_msg;
-            try {
-                error_msg = i18n("error_message", t.toString());
-            } catch (IllegalArgumentException e) {
-                // Fallback if message formatting fails (e.g. quotes in exception message)
-                error_msg = "Error: " + t;
-            }
+            // OutOfMemoryError's own toString() is just "java.lang.OutOfMemoryError: Java heap
+            // space" - meaningless to a player, and unlike every other failure here it isn't really
+            // "a bug in this specific action", it's a hard resource ceiling that different actions
+            // can hit under different conditions (bigger maps, longer sessions). Give it a message
+            // that actually suggests something the player can do about it, same spirit as the
+            // "error_message" bundle string. //added by ikill240c 2026-09-17
+            if (t instanceof OutOfMemoryError) { //added by ikill240c 2026-09-17
+                error_msg = i18n("error_out_of_memory"); //added by ikill240c 2026-09-17
+            } else { //added by ikill240c 2026-09-17
+                try {
+                    error_msg = i18n("error_message", t.toString());
+                } catch (IllegalArgumentException e) {
+                    // Fallback if message formatting fails (e.g. quotes in exception message)
+                    error_msg = "Error: " + t;
+                }
+            } //added by ikill240c 2026-09-17
             logger.log(Level.SEVERE, error + ": " + error_msg);
             TinyFileDialogs.tinyfd_messageBox(error, error_msg.replace("\"", "\\\""), "ok", "error", 1);
         }

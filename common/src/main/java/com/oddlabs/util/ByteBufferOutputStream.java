@@ -33,7 +33,13 @@ public final class ByteBufferOutputStream extends OutputStream {
         return buffer;
     }
 
-    private void ensureCapacity(int size) {
+    // Made public - GameArgumentWriter (a different module/package) writes directly to buffer() via
+    // putInt()/putShort() for Distributable/Distributable[] arguments, completely bypassing the
+    // write() methods below (the only place this was previously called from). That meant a large
+    // enough argument - e.g. a big unit selection sent over the network - could write past the fixed
+    // 16382-byte buffer with no growth check at all, throwing BufferOverflowException. Callers writing
+    // directly to buffer() must now call this themselves first. //added by ikill240c
+    public void ensureCapacity(int size) {
         if (buffer.remaining() < size) {
             int new_capacity = buffer.capacity() * 2 + size;
             new_capacity = (new_capacity + 7) & ~7; // Pad to 8 bytes

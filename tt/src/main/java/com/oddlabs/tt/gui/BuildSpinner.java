@@ -15,7 +15,12 @@ import org.jspecify.annotations.NonNull;
 import java.util.List;
 
 public final class BuildSpinner extends IconSpinner {
-    public static final int INFINITE_LIMIT = 30;
+    // At this count, the spinner switches from showing the plain number to the infinite (∞)
+    // symbol - so the highest number ever actually displayed is INFINITE_LIMIT - 1 (29 at the old
+    // value of 30, matching what was reported in-game). Raised from 30 to 100 per request, so
+    // players get a full 100-deep numeric queue before it switches to infinite instead of just 29.
+    // //added by ikill240c
+    public static final int INFINITE_LIMIT = 100; //added by ikill240c
 
     private final @NonNull PlayerInterface player_interface;
 

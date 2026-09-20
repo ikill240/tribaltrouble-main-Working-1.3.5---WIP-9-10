@@ -54,10 +54,11 @@ public final class GatherController<S extends Supply> extends Controller {
     }
 
     @Override
-    public void onStuck() {//added by ikill240c
+    public boolean onStuck() {//added by ikill240c - was void; see Controller.onStuck()'s own comment for why this now reports back that it handled it
         resetGiveUpCounters();
         supply = null;
         unit.swapController(new GatherController<>(unit, null, supply_type, assigned_building));
+        return true; //added by ikill240c
     }
 
     private void gather() {
@@ -103,8 +104,19 @@ public final class GatherController<S extends Supply> extends Controller {
                     unit.getSupplyContainer().getNumSupplies());
             unit.getSupplyContainer().increaseSupply(-num_supplies, unit_supply_type);
             if (unit.getSupplyContainer().getNumSupplies() > 0) {
-                unit.popController();
-                unit.pushController(new EnterController(unit, building));
+                // Was `unit.popController(); unit.pushController(new EnterController(unit, building));`
+                // - two separate calls. popController() synchronously triggers decide() on whatever
+                // controller is now exposed underneath BEFORE the new EnterController ever gets pushed.
+                // If another GatherController happened to be nested beneath this one (from some earlier
+                // state), it would see the exact same "still have supplies, close enough to drop off"
+                // condition (nothing had changed it yet) and do the same pop-then-push itself, cascading
+                // through every nested layer in one synchronous recursive burst - eventually hitting an
+                // AssertionError once a controller further down tried to act on a unit that an inner
+                // EnterController push had already consumed (entering a worker building can remove the
+                // unit synchronously). swapController() replaces the controller atomically - no
+                // intermediate exposure of a stale stack frame to a synchronous decide() call.
+                // //added by ikill240c
+                unit.swapController(new EnterController(unit, building));
             } else
                 gather();
         } else if (!shouldGiveUp(State.DROPOFF.ordinal())) {

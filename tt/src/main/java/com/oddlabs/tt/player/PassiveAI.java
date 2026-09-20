@@ -2,6 +2,7 @@ package com.oddlabs.tt.player;
 
 import com.oddlabs.tt.model.Action;
 import com.oddlabs.tt.model.Selectable;
+import com.oddlabs.tt.model.Unit; //added by ikill240c 2026-09-11 - needed for the null-safety fix to the chieftain decide() call below
 import com.oddlabs.tt.model.behaviour.IdleController;
 import com.oddlabs.tt.util.Target;
 import org.jspecify.annotations.NonNull;
@@ -33,8 +34,12 @@ public final class PassiveAI extends AI {
                     }
                 }
             }
-            if (getOwner().hasActiveChieftain()) {
-                getOwner().getRace().getChieftainAI().decide(getOwner().getChieftain());
+            // Was `if (getOwner().hasActiveChieftain())` then unconditionally calling getChieftain() -
+            // same bug as AdvancedAI.animate(): hasActiveChieftain() can be true from extra chieftains
+            // alone while the primary slot is still null. //added by ikill240c 2026-09-11
+            Unit primary_chieftain = getOwner().getChieftain();
+            if (primary_chieftain != null && !primary_chieftain.isDead()) {
+                getOwner().getRace().getChieftainAI().decide(primary_chieftain);
             }
         }
     }

@@ -1,6 +1,10 @@
 package com.oddlabs.tt.viewer;
 
-public final class SpectatorInGameInfo extends DefaultInGameInfo {
+// Was final; opened up so SinglePlayerSpectatorInGameInfo (a local, no-network singleplayer
+// variant - see its own comment) can extend it and inherit WorldViewer's `instanceof
+// SpectatorInGameInfo` spectator-detection check, which is the actual mechanism that makes
+// spectating take effect. //added by ikill240c
+public class SpectatorInGameInfo extends DefaultInGameInfo { //added by ikill240c
     private final float random_start_position;
 
     public SpectatorInGameInfo(float random_start_position) {

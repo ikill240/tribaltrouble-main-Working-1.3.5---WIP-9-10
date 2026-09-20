@@ -91,6 +91,21 @@ public final class ARMIEvent implements Serializable {
         int num_params = parameter_types.length;
         if (num_params == 0)
             return null;
+        // command_stream can be null here even though num_params > 0 - this shouldn't normally
+        // happen (the sending side's createByteArrayFromCommand() only produces a null
+        // command_stream when its own args array is null, which for a proxied interface method
+        // only happens when THAT side also sees zero parameters), but when it does, the previous
+        // behavior was an unguarded ByteBufferInputStream(null) -> ByteBuffer.wrap(null) ->
+        // NullPointerException, which propagated all the way out as an unexplained
+        // IllegalARMIEventException and dropped the network connection outright. Failing this one
+        // event explicitly instead - as the same IllegalARMIEventException path every other
+        // malformed-event case already goes through, just with a clear cause instead of a bare NPE
+        // - is more diagnosable and no less safe: a call whose arguments genuinely couldn't be
+        // read still can't be serviced either way. //added by ikill240c
+        if (command_stream == null) { //added by ikill240c
+            throw new IOException("ARMI event for " + method + " expects " + num_params //added by ikill240c
+                    + " argument(s) but has no argument data (command_stream is null)"); //added by ikill240c
+        } //added by ikill240c
         Object[] args;
         args = new Object[num_params];
         ByteBufferInputStream byte_stream = new ByteBufferInputStream(command_stream);

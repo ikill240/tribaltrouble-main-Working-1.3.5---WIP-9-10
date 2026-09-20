@@ -31,14 +31,33 @@ public final class ShipTrajectory {
         ShipTrajectoryPoint p0 = new ShipTrajectoryPoint(ship);
         ShipTrajectoryPoint p1 = pickTargetPosition(grid, ship, t);
 
-        var regionPath = findRegionPath(p0, p1);
+        // Merged from boats_on_steam: when there's no land between start and destination, use a
+        // plain 2-point path instead of always going through region-based pathing. This matters
+        // for more than performance - createTrajectory()'s turn-smoothing loop (the arc/rotation
+        // math building curved segments between waypoints) only runs for paths of 3+ points; a
+        // straight 2-point path skips it entirely. Region-based pathing routes through
+        // intermediate REGION CENTROIDS rather than a direct line, so even a plain, unobstructed
+        // click was being turned into a multi-waypoint path and run through that turn-smoothing
+        // arc logic - if a ship's final position ends up offset from where it was actually
+        // clicked, this is the most likely place responsible, since every other step (picking the
+        // target, following the finished trajectory) doesn't do this kind of point math at all.
+        // //added by ikill240c
+        boolean simple = !checkLandCollision(grid, p0, p1); //added by ikill240c
+        if (simple) { //added by ikill240c
+            var path = new ArrayList<ShipTrajectoryPoint>(); //added by ikill240c
+            path.add(p0); //added by ikill240c
+            path.add(p1); //added by ikill240c
+            trajectory = createTrajectory(path); //added by ikill240c
+        } else { //added by ikill240c
+            var regionPath = findRegionPath(p0, p1);
 
-        if (regionPath != null) {
-            optimizePath(regionPath);
-            trajectory = createTrajectory(regionPath);
-        } else {
-            trajectory = null;
-        }
+            if (regionPath != null) {
+                optimizePath(regionPath);
+                trajectory = createTrajectory(regionPath);
+            } else {
+                trajectory = null;
+            } //added by ikill240c
+        } //added by ikill240c
     }
 
     private List<ShipTrajectoryPoint> findRegionPath(ShipTrajectoryPoint from, ShipTrajectoryPoint to) {

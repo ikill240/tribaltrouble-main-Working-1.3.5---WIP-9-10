@@ -14,7 +14,17 @@ import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 public final class NetworkSelector {
-    private static final long PING_TIMEOUT = 4 * 60 * 1000;
+    // Was 4 minutes - long enough under normal conditions, but a severely stalled game (the AI
+    // getting stuck in a way that repeatedly re-runs something expensive without ever resolving,
+    // for instance) can block the whole process for that long, including whatever thread answers
+    // this ping - even for a loopback connection to the SAME process, not a genuine remote peer
+    // that could actually become unreachable. When that happens, this timeout doesn't recover
+    // anything - it just disconnects the local player from their own game with a confusing "has
+    // left the game" message on top of whatever's actually stalling. Raised to give a severely
+    // stalled game more room to either recover or surface as a stall the player can see and act
+    // on, rather than being silently kicked out from under them. Still eventually catches a
+    // genuinely dead connection in real multiplayer, just more patiently. //added by ikill240c
+    private static final long PING_TIMEOUT = 10 * 60 * 1000; //added by ikill240c
     private static final long PING_DELAY = PING_TIMEOUT / 2;
 
     private final @NonNull MonotoneTimeManager time_manager;

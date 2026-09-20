@@ -15,7 +15,8 @@ public final class Game implements Serializable {
     public static final int SIZE_MEDIUM = 1;
     public static final int SIZE_LARGE = 2;
     public static final int SIZE_ENORMOUS = 3;
-    public static final int SIZE_ARCHIPELAGO = 4;
+    public static final int SIZE_UNREAL = 4; //added by ikill240c - 4x SIZE_ENORMOUS, see TerrainMenu.SIZES. Placed BEFORE archipelago (renumbered below) since the pulldown stores its chosen index directly as this value, and archipelago's item is only conditionally added (Globals.SHIPS_ENABLED) - it must stay the last, highest value so an absent item never leaves a gap before something else.
+    public static final int SIZE_ARCHIPELAGO = 5; //added by ikill240c - was 4, renumbered to stay after the new unconditional SIZE_UNREAL slot
 
     public static final int TERRAIN_TYPE_NATIVE = 0;
     public static final int TERRAIN_TYPE_VIKING = 1;

@@ -21,7 +21,7 @@ public final class ShipHR {
 
     private final boolean vikings;
 
-    protected float unitSize(Unit unit) {
+    float unitSize(Unit unit) { //added by ikill240c 2026-09-10 - class is final, so 'protected' gave no extra access beyond package-private; simplified per errorprone warning
         if (unit.isWarrior()) {
             return 1.20f;
         } else {
@@ -47,9 +47,16 @@ public final class ShipHR {
         public abstract boolean needRowers();
 
         public abstract int countRowers();
+
+        // Merged from boats_on_steam: whether a peon can be pulled out of this row (e.g. for
+        // reassignment or disembarking) without leaving it unable to function - a rowing bench
+        // needs to keep at least its minimum required rowers, for instance. Missing this check
+        // previously meant peons could be pulled from any row regardless of whether doing so left
+        // it non-functional (e.g. a bench with no rowers left). //added by ikill240c
+        public abstract boolean canSparePeons(); //added by ikill240c
     }
 
-    class Rudder implements Row {
+    static class Rudder implements Row { //added by ikill240c 2026-09-10 - verified this class never references the enclosing ShipHR instance; safe to make static per errorprone warning
         private Unit unit = null;
         private ShipAllocation alloc;
 
@@ -82,7 +89,14 @@ public final class ShipHR {
         }
 
         public void killAll() {
-            unit.drown();
+            // Defensive: if this unit already died some other way before the ship itself did
+            // (e.g. picked off independently), unit.drown() here would call pushController() on
+            // an already-dead unit - pushController() asserts a unit is never dead when pushed
+            // to, crashing the game outright rather than harmlessly no-opping on a crew member
+            // that's already gone. //added by ikill240c
+            if (unit != null && !unit.isDead()) { //added by ikill240c
+                unit.drown();
+            } //added by ikill240c
             unit = null;
         }
 
@@ -100,6 +114,10 @@ public final class ShipHR {
 
         public int countRowers() {
             return 0;
+        }
+
+        public boolean canSparePeons() { //added by ikill240c
+            return false; // the rudder's single peon is never spareable //added by ikill240c
         }
     }
 
@@ -161,7 +179,10 @@ public final class ShipHR {
         public void killAll() {
             for (int i = 0; i < all_units.size(); i++) {
                 Unit unit = all_units.get(i);
-                unit.drown();
+                // Same defensive check as Rudder.killAll() above - see its comment. //added by ikill240c
+                if (!unit.isDead()) { //added by ikill240c
+                    unit.drown();
+                } //added by ikill240c
             }
             all_units.clear();
             peons.clear();
@@ -199,6 +220,15 @@ public final class ShipHR {
         public int countRowers() {
             int required = (left_rower ? 1 : 0) + (right_rower ? 1 : 0);
             return Math.min(peons.size(), required);
+        }
+
+        public boolean canSparePeons() { //added by ikill240c
+            // Only excess peons beyond the minimum rowers this bench actually needs can be pulled
+            // - e.g. a bench needing 1 rower with exactly 1 peon seated can't spare it (pulling it
+            // would leave the bench unable to row), but with 2 peons seated the extra one can be
+            // spared. //added by ikill240c
+            int required = (left_rower ? 1 : 0) + (right_rower ? 1 : 0); //added by ikill240c
+            return peons.size() > required; //added by ikill240c
         }
 
         private void reassign() {
@@ -268,7 +298,7 @@ public final class ShipHR {
         }
     }
 
-    class UpperDeckRow implements Row {
+    static class UpperDeckRow implements Row { //added by ikill240c 2026-09-10 - verified this class never references the enclosing ShipHR instance; safe to make static per errorprone warning
         private Unit left = null;
         private Unit right = null;
         private ShipAllocation leftAlloc;
@@ -302,12 +332,20 @@ public final class ShipHR {
         }
 
         public void killAll() {
+            // Same defensive check as Rudder.killAll() above - see its comment. The reference is
+            // always cleared regardless of whether drown() was actually called, since other code
+            // relies on left/right == null meaning "seat empty" - only the drown() call itself
+            // needs skipping for an already-dead unit, not the cleanup. //added by ikill240c
             if (left != null) {
-                left.drown();
+                if (!left.isDead()) { //added by ikill240c
+                    left.drown();
+                } //added by ikill240c
                 left = null;
             }
             if (right != null) {
-                right.drown();
+                if (!right.isDead()) { //added by ikill240c
+                    right.drown();
+                } //added by ikill240c
                 right = null;
             }
         }
@@ -348,6 +386,10 @@ public final class ShipHR {
 
         public int countRowers() {
             return 0;
+        }
+
+        public boolean canSparePeons() { //added by ikill240c
+            return false; // fighters, not rowers - never spareable from this row //added by ikill240c
         }
     }
 
@@ -480,7 +522,13 @@ public final class ShipHR {
     }
 
     public Unit exitUnit(UnitTemplate template) {
-        boolean warrior = (template.getWeaponFactory() != null);
+        // Bug fix (merged from boats_on_steam): getWeaponFactory() is @NonNull (see
+        // UnitTemplate.getWeaponFactory()) - it never returns null even for peons, which have a
+        // "no weapon" factory whose getType() returns null instead. The old check here
+        // (getWeaponFactory() != null) was therefore always true, classifying every unit
+        // including peons as a warrior and corrupting ship row/seating assignment.
+        // //added by ikill240c
+        boolean warrior = (template.getWeaponFactory().getType() != null); //added by ikill240c
         if (warrior) {
             for (int i = 0; i < rows.size(); i++) {
                 Row row = rows.get(i);
@@ -498,6 +546,24 @@ public final class ShipHR {
                 }
             }
         } else {
+            // Merged from boats_on_steam: first pass only considers rows that can actually spare
+            // a peon (see Row.canSparePeons()) - e.g. a rowing bench with excess peons beyond its
+            // minimum required rowers. Only falls back to pulling from ANY row (including one that
+            // would be left unable to row) if no row can spare one. Previously this method had no
+            // such distinction at all, so a peon could be pulled from a bench's last rower just as
+            // readily as an excess one, leaving that bench unable to function.
+            // //added by ikill240c
+            for (int i = rows.size() - 1; i >= 0; i--) { //added by ikill240c
+                Row row = rows.get(i); //added by ikill240c
+                Unit unit = row.findUnit(template); //added by ikill240c
+                if (unit != null && row.canSparePeons()) { //added by ikill240c
+                    row.exit(unit); //added by ikill240c
+                    unit2row.remove(unit); //added by ikill240c
+                    unit.setReference(null); //added by ikill240c
+                    unit.unmount(); //added by ikill240c
+                    return unit; //added by ikill240c
+                } //added by ikill240c
+            } //added by ikill240c
             for (int i = rows.size() - 1; i >= 0; i--) {
                 Row row = rows.get(i);
                 Unit unit = row.findUnit(template);

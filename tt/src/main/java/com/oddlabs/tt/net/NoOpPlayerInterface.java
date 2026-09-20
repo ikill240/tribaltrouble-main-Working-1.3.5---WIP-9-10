@@ -6,6 +6,7 @@ import com.oddlabs.tt.model.DeployType;
 import com.oddlabs.tt.model.Selectable;
 import com.oddlabs.tt.model.Supply;
 import com.oddlabs.tt.model.Unit;
+import com.oddlabs.tt.player.Formation; //added by ikill240c
 import com.oddlabs.tt.player.PlayerInterface;
 import com.oddlabs.tt.util.Target;
 import org.jspecify.annotations.NonNull;
@@ -43,12 +44,20 @@ public final class NoOpPlayerInterface implements PlayerInterface {
     }
 
     @Override
+    public void standGround(@NonNull Selectable<?> @NonNull [] units) { //added by ikill240c
+    }
+
+    @Override
     public void trainChieftain(@NonNull Building building, boolean start) {
     }
 
     @Override
     public void placeBuilding(Selectable<?> @NonNull [] selection, int template_id, int placing_grid_x,
-            int placing_grid_y) {
+            int placing_grid_y, boolean queue) { //added by ikill240c
+    }
+
+    @Override
+    public void setFormation(Selectable<?> @NonNull [] selection, @NonNull Formation formation) { //added by ikill240c - was setFormation(Formation) with no selection, matching PlayerInterface's own updated signature (formation is per-unit now, not global)
     }
 
     @Override

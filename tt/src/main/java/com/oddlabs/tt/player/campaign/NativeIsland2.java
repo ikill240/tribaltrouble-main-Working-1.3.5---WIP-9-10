@@ -72,6 +72,9 @@ public final class NativeIsland2 extends Island {
 
     @Override
     protected void start() {
+        // Campaign progression gate: Chiefs Courage unavailable to Natives until island 5.
+        // Convert already unlocked by this island (unlocks at island 2). //added by ikill240c
+        getViewer().getLocalPlayer().enableChiefsCourage(false); //added by ikill240c
         Runnable runnable;
         final Player local_player = getViewer().getLocalPlayer();
         final Player captives = getViewer().getWorld().getPlayers()[1];

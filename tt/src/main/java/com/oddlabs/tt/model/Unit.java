@@ -5,9 +5,12 @@ import com.oddlabs.tt.audio.AudioParameters;
 import com.oddlabs.tt.audio.AudioPlayer;
 import com.oddlabs.tt.landscape.LandscapeTarget;
 import com.oddlabs.tt.model.behaviour.DefendController;
+import com.oddlabs.tt.model.behaviour.GuardController; //added by ikill240c
+import com.oddlabs.tt.model.behaviour.PatrolController; //added by ikill240c
 import com.oddlabs.tt.model.behaviour.DieBehaviour;
 import com.oddlabs.tt.model.behaviour.DieController;
 import com.oddlabs.tt.model.behaviour.EnterController;
+import com.oddlabs.tt.model.behaviour.FollowController; //added by ikill240c
 import com.oddlabs.tt.model.behaviour.GatherController;
 import com.oddlabs.tt.model.behaviour.HuntController;
 import com.oddlabs.tt.model.behaviour.IdleController;
@@ -30,7 +33,10 @@ import com.oddlabs.tt.particle.BalancedParametricEmitter;
 import com.oddlabs.tt.particle.StunFunction;
 import com.oddlabs.tt.pathfinder.Movable;
 import com.oddlabs.tt.pathfinder.Occupant;
+import com.oddlabs.tt.pathfinder.PathFinder;
 import com.oddlabs.tt.pathfinder.PathTracker;
+import com.oddlabs.tt.pathfinder.Region;
+import com.oddlabs.tt.pathfinder.TargetRegionFinder;
 import com.oddlabs.tt.pathfinder.UnitGrid;
 import com.oddlabs.tt.player.Player;
 import com.oddlabs.tt.render.SpriteKey;
@@ -52,19 +58,81 @@ public class Unit extends Selectable<UnitTemplate> implements Occupant, Movable 
 
     private static final int PENALTY_INCREMENT = 3;
     private static final int INITIAL_PATH_PENALTY = 5;
-    private static final float[] MAX_MAGIC_ENERGY = new float[]{40f, 70f, 120f};//{40f, 70f, 90f} //added by ikill240c
+    private static final float[] MAX_MAGIC_ENERGY = new float[]{40f, 70f, 90f};//{40f, 70f, 90f} //added by ikill240c
+    // Only used for the array's LENGTH now (how many magic slots exist) - the actual per-slot cost
+    // VALUES are customizable, read from World instead (see getMagicCost() below), so this array's
+    // own values are effectively just the fallback defaults if something reads it directly.
+    // //added by ikill240c
+    private float getMagicCost(int index) { //added by ikill240c
+        return switch (index) {
+            case 0 -> getOwner().getWorld().getMagic1Cost();
+            case 1 -> getOwner().getWorld().getMagic2Cost();
+            case 2 -> getOwner().getWorld().getMagic3Cost();
+            default -> MAX_MAGIC_ENERGY[index]; // out-of-range guard, shouldn't normally happen //added by ikill240c
+        };
+    }
 
+    // One active Chiefs Courage buff instance on this unit. Multiple can be active at once
+    // (stacking - see applyCourageBuff()/recomputeCourageTotals()) instead of a second trigger just
+    // overwriting whatever buff was already running. speed_mult/attack_speed_mult/combat_mult are
+    // stored as absolute multipliers (matching applyCourageBuff()'s existing parameter shape), but
+    // recomputeCourageTotals() sums the BONUS portion (value - 1) of each active stack rather than
+    // multiplying the multipliers together - multiplying several ~2.5x multipliers together would
+    // explode exponentially once stacking is allowed. //added by ikill240p 2026-09-14
+    private static final class CourageStack { //added by ikill240p 2026-09-14
+        float time_remaining; //added by ikill240p 2026-09-14 - ticked down independently per stack in doAnimate(), see below
+        final float speed_mult; //added by ikill240p 2026-09-14
+        final float range_bonus; //added by ikill240p 2026-09-14
+        final float attack_speed_mult; //added by ikill240p 2026-09-14
+        final float combat_mult; //added by ikill240p 2026-09-14
+        final float cooldown_reduction; //added by ikill240p 2026-09-14
+
+        CourageStack(float duration, float speed_mult, float range_bonus, float attack_speed_mult, //added by ikill240p 2026-09-14
+                float combat_mult, float cooldown_reduction) { //added by ikill240p 2026-09-14
+            this.time_remaining = duration; //added by ikill240p 2026-09-14
+            this.speed_mult = speed_mult; //added by ikill240p 2026-09-14
+            this.range_bonus = range_bonus; //added by ikill240p 2026-09-14
+            this.attack_speed_mult = attack_speed_mult; //added by ikill240p 2026-09-14
+            this.combat_mult = combat_mult; //added by ikill240p 2026-09-14
+            this.cooldown_reduction = cooldown_reduction; //added by ikill240p 2026-09-14
+        }
+    }
+
+    // Every currently-active Chiefs Courage buff instance on this unit. A new trigger pushes an
+    // ADDITIONAL stack here (see applyCourageBuff()) instead of overwriting whatever was already
+    // active, so casting magic again before the previous buff expires stacks on top of it.
+    // //added by ikill240p 2026-09-14
+    private final List<CourageStack> courage_stacks = new ArrayList<>(); //added by ikill240p 2026-09-14
+
+    // Combined totals across every currently-active courage stack, recomputed by
+    // recomputeCourageTotals() whenever a stack is added or one expires. These are exactly the
+    // fields the rest of the class (getCourageAttackSpeedMultiplier(), getMetersPerSecond(),
+    // doAnimate()'s magic-regen loop, etc.) already reads, so nothing downstream needs to change.
+    // //added by ikill240p 2026-09-14
     private float courage_time_remaining = 0f;//added by ikill240c
     private float courage_speed_mult = 1f;//added by ikill240c
     private float courage_range_bonus = 0f;//added by ikill240c
     private float courage_attack_speed_mult = 1f;//added by ikill240c
     private float courage_combat_mult = 1f;//added by ikill240c
+    // Fraction by which this unit's magic energy regen rate is boosted while Chiefs Courage is
+    // active - see doAnimate()'s magic-energy loop for where this is actually applied, and
+    // triggerChiefsCourage() for how it reaches allies too (not just the caster's own army, unlike
+    // the combat buff fields above). //added by ikill240c
+    private float courage_cooldown_reduction = 0f; //added by ikill240c
 
-    private static final float[] COURAGE_DURATION = new float[]{6f, 9f, 5f}; // indexed by magic_index//added by ikill240c
+    private static final float[] COURAGE_DURATION = new float[]{6f, 9f, 16f}; // indexed by magic_index//added by ikill240c
     private static final float COURAGE_SPEED_MULT = 2.5f;//added by ikill240c og 1.3
     private static final float COURAGE_RANGE_BONUS = 5f;//added by ikill240c og 3
     private static final float COURAGE_ATTACK_SPEED_MULT = 2.5f;//added by ikill240c og 1.23
     private static final float COURAGE_COMBAT_MULT = 1.75f;//added by ikill240c og 1.15
+    // Flat magic-cooldown-reduction fraction Chiefs Courage grants to the caster's own army AND
+    // their allies (via the ally loop in triggerChiefsCourage()) - see that method's own comments
+    // for why this is deliberately NOT part of the escalating buff set. //added by ikill240c
+    private static final float COOLDOWN_REDUCTION = 0.03f; //added by ikill240c
+    // Chiefs Courage now only affects allied units within this radius (world units, same scale as
+    // ConvertFactory's ~30f hit_radius) of the casting chieftain, instead of unconditionally
+    // buffing every allied unit on the entire map regardless of distance. //added by ikill240p 2026-09-14
+    private static final float COURAGE_RADIUS = 80f; //added by ikill240p 2026-09-14
 
     private float stuck_check_x = Float.NaN;//added by ikill240c
     private float stuck_check_y = Float.NaN;//added by ikill240c
@@ -72,8 +140,14 @@ public class Unit extends Selectable<UnitTemplate> implements Occupant, Movable 
 
     private static final float GATHER_STUCK_DIST_SQ = 4f;//added by ikill240c
     private static final float GATHER_STUCK_SECONDS = 3f;//added by ikill240c
+    // Separate, longer threshold for the general "any unit, any controller" case below - popping
+    // the controller entirely (the generic fallback when a controller doesn't handle onStuck()
+    // itself) is a more drastic action than gathering's own "just pick a different resource node",
+    // so this stays more conservative to avoid a large group's normal, brief traffic-jam-style
+    // congestion while walking together being mistaken for genuinely stuck. //added by ikill240c
+    private static final float GENERAL_STUCK_SECONDS = 5f; //added by ikill240c og 8
 
-    public class Animation {
+    public static class Animation { //added by ikill240c 2026-09-10 - pure constants holder, never instantiated as an inner class instance; made static per errorprone ClassCanBeStatic warning
         public static final int IDLING = 0;
         public static final int MOVING = 1;
         public static final int THROWING = 2;
@@ -92,11 +166,28 @@ public class Unit extends Selectable<UnitTemplate> implements Occupant, Movable 
     private final @Nullable String name;
     private final @NonNull PathTracker path_tracker;
     private final float[] magic_energy = new float[MAX_MAGIC_ENERGY.length];//added by ikill240c
+    // Set only on a converted chieftain whose ORIGINAL race differs from the recipient player's own
+    // race (see Convert.java) - lets that specific unit cast spells from its own original race instead
+    // of always using getOwner().getRace(), which is what actually makes "convert an opposite-race
+    // chief -> can use magic from both races" work: your own chieftain still casts your race's spells,
+    // and the converted one casts its original race's spells, both selectable and castable normally.
+    // Stored as a plain race INDEX (RacesResources.RACE_VIKINGS/RACE_NATIVES) rather than a Race
+    // object, since the chief health multiplier (getEffectiveMaxHitPoints() below) also needs an
+    // index to look up World.getChiefHealthMultiplier(int), and re-deriving an index from a Race
+    // object isn't possible (Race itself doesn't store its own index). -1 means no override.
+    // //added by ikill240c
+    private int magic_race_override_index = -1;
     private int last_magic_index = -1;
 
     private @Nullable BalancedParametricEmitter stun_marker;
     private int hit_points;
     private float time_since_damage = 0f;//added by ikill240c
+    // -1f sentinel means "not yet eligible/started" - mirrors the old AdvancedAI-only
+    // chieftain_heal_timers Map's absence-check (a chieftain with no entry yet), but as a per-unit
+    // field instead of a per-player Map entry, since this now needs to run for every chieftain
+    // regardless of which player (human or AI) controls it - see doAnimate() below.
+    // //added by ikill240c
+    private float chieftain_heal_timer = -1f; //added by ikill240c
     private @NonNull int animation = Animation.IDLING;
     private float anim_speed;
     private float anim_time;
@@ -132,6 +223,23 @@ public class Unit extends Selectable<UnitTemplate> implements Occupant, Movable 
         this(owner, x, y, rally_point, unit_template, name, notify_by_chieftain, grid_targets_only, false);
     }
 
+    /**
+     * This unit's max HP after applying the chief health-by-race multiplier, for chieftains only -
+     * regular units are unaffected (returns the template's base value unchanged). Uses this unit's own
+     * EFFECTIVE race (the magic race override if one is set, matching doMagic()'s casting-race logic,
+     * or the owner's race otherwise) so a converted chieftain is multiplied by its own original race's
+     * setting, not its new owner's. Deliberately a live method, not a cached field, since a converted
+     * chieftain's override is only set AFTER construction (see Convert.java) - this always reflects
+     * the current override state rather than whatever was true at spawn time. //added by ikill240c
+     */
+    public final int getEffectiveMaxHitPoints() { //added by ikill240c
+        int base = getTemplate().getMaxHitPoints();
+        if (!getAbilities().hasAbilities(Abilities.MAGIC))
+            return base;
+        int race_index = magic_race_override_index >= 0 ? magic_race_override_index : getOwner().getPlayerInfo().getRace();
+        return Math.round(base * getOwner().getWorld().getChiefHealthMultiplier(race_index));
+    }
+
     public Unit(@NonNull Player owner, float x, float y, @Nullable Target rally_point,
             @NonNull UnitTemplate unit_template, @Nullable String name, boolean notify_by_chieftain,
             boolean grid_targets_only, boolean imaginary) {
@@ -140,7 +248,7 @@ public class Unit extends Selectable<UnitTemplate> implements Occupant, Movable 
         this.imaginary = imaginary;
         getAbilities().addAbilities(unit_template.getAbilities());
         register();
-        hit_points = unit_template.getMaxHitPoints();
+        hit_points = getEffectiveMaxHitPoints(); //added by ikill240c - was unit_template.getMaxHitPoints() directly; now applies the chief health-by-race multiplier for chieftains
         this.path_tracker = new PathTracker(getUnitGrid(), this);
         UnitSupplyContainerFactory factory = unit_template.getUnitSupplyContainerFactory();
         supply_container = factory != null ? (UnitSupplyContainer) factory.createContainer(this) : null;
@@ -170,7 +278,12 @@ public class Unit extends Selectable<UnitTemplate> implements Occupant, Movable 
                         }
                     }
                 }
-                unit_target = grid.findGridTargets(rally_point.getGridX(), rally_point.getGridY(), 1, true)[0];
+                Target found_target = grid.findGridTargets(rally_point.getGridX(), rally_point.getGridY(), 1, true)[0];
+                // findGridTargets(...)[0] can legitimately return null when no valid, unoccupied cell is
+                // found near the rally point. Falling back to the raw rally_point itself - the same
+                // fallback the non-LandscapeTarget branch below already uses - instead of crashing unit
+                // spawn/deployment entirely. //added by ikill240c
+                unit_target = found_target != null ? found_target : rally_point;
                 for (Target target : temp_occupants) {
                     grid.freeGrid(target.getGridX(), target.getGridY(), this);
                 }
@@ -213,8 +326,22 @@ public class Unit extends Selectable<UnitTemplate> implements Occupant, Movable 
             return super.toString();
     }
 
-    private void updateGatherStuckCheck(float t) {//added by ikill240c
-        if (!(isMoving() && getPrimaryController() instanceof GatherController<?> gc)) {
+    // Was updateGatherStuckCheck(), and its very first line required getPrimaryController()
+    // instanceof GatherController - meaning stuck detection only ever existed for peons actively
+    // gathering, and every other activity (warriors walking to attack, units following, entering
+    // a building, any plain move) had no stuck detection or recovery at all, matching reports of
+    // units getting stuck and never getting themselves unstuck. Now applies to any moving unit
+    // regardless of controller type: onStuck() (see Controller's own comment) lets a specific
+    // controller like GatherController keep handling it its own way (picking a different resource
+    // node), and reports back whether it did; if not (the base no-op default, which is every
+    // controller except GatherController), popController() is applied as a generic fallback so
+    // the unit abandons whatever specific sub-task has it stuck rather than standing there
+    // indefinitely - it falls back to whatever's beneath on its controller stack, or goes idle if
+    // nothing is. Uses the longer GENERAL_STUCK_SECONDS threshold for that generic fallback
+    // specifically (gathering's own recovery, being cheaper/safer, still fires at the original,
+    // shorter GATHER_STUCK_SECONDS via the same accumulated stuck_time). //added by ikill240c
+    private void updateStuckCheck(float t) {//added by ikill240c
+        if (!(isMoving() && getPrimaryController() != null)) {
             stuck_time = 0f;
             stuck_check_x = Float.NaN;
             return;
@@ -230,8 +357,12 @@ public class Unit extends Selectable<UnitTemplate> implements Occupant, Movable 
         float dy = y - stuck_check_y;
         if (dx * dx + dy * dy < GATHER_STUCK_DIST_SQ) {
             stuck_time += t;
-            if (stuck_time > GATHER_STUCK_SECONDS) {
-                gc.onStuck();
+            boolean is_gathering = getPrimaryController() instanceof GatherController<?>; //added by ikill240c
+            float threshold = is_gathering ? GATHER_STUCK_SECONDS : GENERAL_STUCK_SECONDS; //added by ikill240c
+            if (stuck_time > threshold) { //added by ikill240c
+                if (!getPrimaryController().onStuck()) { //added by ikill240c
+                    popController(); //added by ikill240c - generic fallback; see this method's own comment
+                } //added by ikill240c
                 stuck_time = 0f;
                 stuck_check_x = x;
                 stuck_check_y = y;
@@ -241,6 +372,9 @@ public class Unit extends Selectable<UnitTemplate> implements Occupant, Movable 
             stuck_check_y = y;
             stuck_time = 0f;
         }
+    }
+    public void reposition() {
+        findInitialPosition(getPositionX(), getPositionY(), true);
     }
 
     private void findInitialPosition(float x, float y, boolean grid_targets_only) {
@@ -305,16 +439,48 @@ public class Unit extends Selectable<UnitTemplate> implements Occupant, Movable 
     }
 
     public final void applyCourageBuff(float duration, float speed_mult, float extra_range, float attack_speed_mult,
-            float combat_mult) {//added by ikill240c
+            float combat_mult, float cooldown_reduction) {//added by ikill240c
         if (isDead())
             return;
-        range_bonus -= courage_range_bonus; // clear any previous courage range bonus before reapplying
-        courage_range_bonus = extra_range;
-        range_bonus += courage_range_bonus;
-        courage_time_remaining = duration;
-        courage_speed_mult = speed_mult;
-        courage_attack_speed_mult = attack_speed_mult;
-        courage_combat_mult = combat_mult;
+        // Pushes a new independent stack instead of overwriting the fields directly - a second
+        // trigger while the first buff is still active now ADDS to it rather than resetting it.
+        // //added by ikill240p 2026-09-14
+        courage_stacks.add(new CourageStack(duration, speed_mult, extra_range, attack_speed_mult, combat_mult, //added by ikill240p 2026-09-14
+                cooldown_reduction)); //added by ikill240p 2026-09-14
+        recomputeCourageTotals(); //added by ikill240p 2026-09-14
+    }
+
+    // Recomputes courage_time_remaining/courage_speed_mult/courage_range_bonus/
+    // courage_attack_speed_mult/courage_combat_mult/courage_cooldown_reduction from the current
+    // courage_stacks list. courage_time_remaining becomes the LONGEST remaining duration across all
+    // stacks (so the unit keeps showing/using a buff for as long as any one stack is still active);
+    // the multiplier fields are "1 + sum of every active stack's (multiplier - 1) bonus" (additive
+    // stacking of the bonus portion, not multiplicative); range_bonus and cooldown_reduction are
+    // plain sums since they were already flat bonus values, not multipliers. //added by ikill240p 2026-09-14
+    private void recomputeCourageTotals() {//added by ikill240p 2026-09-14
+        float longest_remaining = 0f; //added by ikill240p 2026-09-14
+        float speed_bonus_sum = 0f; //added by ikill240p 2026-09-14
+        float range_bonus_sum = 0f; //added by ikill240p 2026-09-14
+        float attack_speed_bonus_sum = 0f; //added by ikill240p 2026-09-14
+        float combat_bonus_sum = 0f; //added by ikill240p 2026-09-14
+        float cooldown_reduction_sum = 0f; //added by ikill240p 2026-09-14
+        for (CourageStack stack : courage_stacks) { //added by ikill240p 2026-09-14
+            if (stack.time_remaining > longest_remaining) //added by ikill240p 2026-09-14
+                longest_remaining = stack.time_remaining; //added by ikill240p 2026-09-14
+            speed_bonus_sum += stack.speed_mult - 1f; //added by ikill240p 2026-09-14
+            range_bonus_sum += stack.range_bonus; //added by ikill240p 2026-09-14
+            attack_speed_bonus_sum += stack.attack_speed_mult - 1f; //added by ikill240p 2026-09-14
+            combat_bonus_sum += stack.combat_mult - 1f; //added by ikill240p 2026-09-14
+            cooldown_reduction_sum += stack.cooldown_reduction; //added by ikill240p 2026-09-14
+        }
+        courage_time_remaining = longest_remaining; //added by ikill240p 2026-09-14
+        range_bonus -= courage_range_bonus; // remove the OLD courage range contribution from the shared range_bonus field //added by ikill240p 2026-09-14
+        courage_range_bonus = range_bonus_sum; //added by ikill240p 2026-09-14
+        range_bonus += courage_range_bonus; // then add back in the freshly-recomputed total //added by ikill240p 2026-09-14
+        courage_speed_mult = 1f + speed_bonus_sum; //added by ikill240p 2026-09-14
+        courage_attack_speed_mult = 1f + attack_speed_bonus_sum; //added by ikill240p 2026-09-14
+        courage_combat_mult = 1f + combat_bonus_sum; //added by ikill240p 2026-09-14
+        courage_cooldown_reduction = cooldown_reduction_sum; //added by ikill240p 2026-09-14
     }
 
     public final float getTimeSinceDamage() {//added by ikill240c
@@ -324,7 +490,7 @@ public class Unit extends Selectable<UnitTemplate> implements Occupant, Movable 
     public final void heal(int amount) {//added by ikill240c
         if (isDead())
             return;
-        hit_points = Math.min(hit_points + amount, getTemplate().getMaxHitPoints());
+        hit_points = Math.min(hit_points + amount, getEffectiveMaxHitPoints()); //added by ikill240c
     }
 
     public final void drown() {
@@ -374,7 +540,27 @@ public class Unit extends Selectable<UnitTemplate> implements Occupant, Movable 
         mounted = true;
         clearOrderQueue(); //added by ikill240c 2026-09-10 16:45
         clearControllerStack();
-        swapController(new IdleController(this, new AttackScanFilter(getOwner(), AttackScanFilter.TOWER_RANGE), false));
+        swapController(new IdleController(this, new TowerAttackScanFilter(getOwner(), AttackScanFilter.TOWER_RANGE), false)); //added by ikill240c - was plain AttackScanFilter; see TowerAttackScanFilter's own comment for the tower-specific priority this now applies
+    }
+
+    /**
+     * "Stand Ground": clears any current order and makes this unit hold its exact current
+     * position, attacking anything that comes within its own attack range but never chasing or
+     * moving otherwise. This is deliberately not a new Controller - it's the exact same
+     * IdleController(..., can_move=false) mechanism mount(Building) above already uses for
+     * tower-mounted units (which also never move, and already auto-attack from a fixed spot for
+     * exactly that reason), just applied to a normal ground unit instead of a mounted one.
+     * No-ops for units that already can't meaningfully "stand ground": already-mounted units
+     * have their own version of this via mount() itself, and non-attacking units (e.g. peons)
+     * have no attack behavior for this state to enable. //added by ikill240c
+     */
+    public final void standGround() { //added by ikill240c
+        if (mounted || !getAbilities().hasAbilities(Abilities.ATTACK)) //added by ikill240c
+            return; //added by ikill240c
+        clearOrderQueue(); //added by ikill240c
+        clearControllerStack(); //added by ikill240c
+        swapController(new IdleController(this, new AttackScanFilter(getOwner(), AttackScanFilter.UNIT_RANGE), //added by ikill240c
+                false)); //added by ikill240c
     }
 
     public final void mount(Ship ship, ShipAllocation ship_allocation) {
@@ -489,7 +675,12 @@ public class Unit extends Selectable<UnitTemplate> implements Occupant, Movable 
 
     public final float getRange(@NonNull Target target) {
         assert !isDead();
-        return getWeaponFactory().getRange() + range_bonus + target.getSize();
+        // Multiplier applied here rather than to the raw weapon factory value, since that's a shared,
+        // immutable template field used by every unit of this type - applying it at the point of
+        // consumption (same technique as the health multipliers) avoids needing to touch
+        // RacesResources' large, hardcoded per-unit construction data at all. //added by ikill240c
+        return (getWeaponFactory().getRange() + range_bonus) * getOwner().getWorld().getUnitRangeMultiplier()
+                + target.getSize(); //added by ikill240c
     }
 
     @Override
@@ -505,35 +696,71 @@ public class Unit extends Selectable<UnitTemplate> implements Occupant, Movable 
     @Override
     public final void doAnimate(float t) {//added by ikill240c
         time_since_damage += t;
-        updateGatherStuckCheck(t); // was defined but never called - this actually runs the universal stuck-gatherer reroute now //added by ikill240c 2026-09-08 03:20
+        updateStuckCheck(t); // generalized from gatherer-only to any moving unit - see that method's own comment //added by ikill240c
         anim_time += anim_speed * t;
         if (isDead() || mounted)
             reinsert();
         getOwner().getWorld().updateGlobalChecksum(animation);
 
         if (getAbilities().hasAbilities(Abilities.MAGIC)) {
+            // courage_cooldown_reduction speeds up regen (shorter effective cooldown) rather than
+            // reducing the cost itself - e.g. 0.03 means magic charges 3% faster while active, matching
+            // "decrease magic cooldown by 3%" more directly than discounting the energy cost would.
+            // //added by ikill240c
+            float regen_amount = t * (1f + courage_cooldown_reduction); //added by ikill240c
             for (int i = 0; i < magic_energy.length; i++) {
-                increaseMagicEnergy(i, t);
+                increaseMagicEnergy(i, regen_amount); //added by ikill240c
             }
+
+            // Idle-chieftain heal-over-time. Previously lived ONLY inside AdvancedAI's own tick
+            // loop (nodeHealChieftain()), which meant a human player's own chieftain never healed
+            // this way at all - only AI-controlled ones did, since AdvancedAI is AI-only logic.
+            // Moved here so it runs for every chieftain regardless of who controls it; the world
+            // settings driving it (getChieftainHealIdleSeconds()/getChieftainHealAmount()) were
+            // already player-agnostic, they just weren't being read anywhere a human player's
+            // units would ever hit. Also now checks against getEffectiveMaxHitPoints() (the
+            // race-multiplied cap heal() itself already respects) instead of the old check's
+            // getTemplate().getMaxHitPoints() (the un-multiplied base) - the old check could
+            // incorrectly consider a chieftain "full" and stop healing before it actually reached
+            // its true, race-adjusted max HP. //added by ikill240c
+            if (getTimeSinceDamage() < getOwner().getWorld().getChieftainHealIdleSeconds() //added by ikill240c
+                    || getHitPoints() >= getEffectiveMaxHitPoints()) { //added by ikill240c
+                chieftain_heal_timer = -1f; // reset the cadence - see the field's own comment //added by ikill240c
+            } else if (chieftain_heal_timer < 0f) { //added by ikill240c
+                // Just became eligible - heal right away rather than waiting a full extra cadence
+                // period on top of the idle threshold already waited for eligibility, matching the
+                // original AI-only behavior exactly. //added by ikill240c
+                heal(getOwner().getWorld().getChieftainHealAmount()); //added by ikill240c
+                chieftain_heal_timer = 0f; //added by ikill240c
+            } else { //added by ikill240c
+                chieftain_heal_timer += t; //added by ikill240c
+                if (chieftain_heal_timer >= getOwner().getWorld().getChieftainHealIdleSeconds()) { //added by ikill240c
+                    heal(getOwner().getWorld().getChieftainHealAmount()); //added by ikill240c
+                    chieftain_heal_timer = 0f; //added by ikill240c
+                } //added by ikill240c
+            } //added by ikill240c
         }
 
-        if (courage_time_remaining > 0f) {
-            courage_time_remaining -= t;
-            if (courage_time_remaining <= 0f) {
-                range_bonus -= courage_range_bonus;
-                courage_range_bonus = 0f;
-                courage_speed_mult = 1f;
-                courage_attack_speed_mult = 1f;
-                courage_combat_mult = 1f;
-                courage_time_remaining = 0f;
+        if (!courage_stacks.isEmpty()) { //added by ikill240p 2026-09-14 - tick every active stack down independently instead of a single shared timer
+            boolean any_expired = false; //added by ikill240p 2026-09-14
+            var iterator = courage_stacks.iterator(); //added by ikill240p 2026-09-14
+            while (iterator.hasNext()) { //added by ikill240p 2026-09-14
+                CourageStack stack = iterator.next(); //added by ikill240p 2026-09-14
+                stack.time_remaining -= t; //added by ikill240p 2026-09-14
+                if (stack.time_remaining <= 0f) { //added by ikill240p 2026-09-14
+                    iterator.remove(); // this stack's duration ran out - drop it and remove its contribution below //added by ikill240p 2026-09-14
+                    any_expired = true; //added by ikill240p 2026-09-14
+                }
             }
+            if (any_expired) //added by ikill240p 2026-09-14 - only worth recomputing totals when the active set actually changed
+                recomputeCourageTotals(); //added by ikill240p 2026-09-14
         }
     }
 
     public final void increaseMagicEnergy(int index, float amount) {
         magic_energy[index] += amount;
-        if (magic_energy[index] > MAX_MAGIC_ENERGY[index]) {
-            magic_energy[index] = MAX_MAGIC_ENERGY[index];
+        if (magic_energy[index] > getMagicCost(index)) { //added by ikill240c
+            magic_energy[index] = getMagicCost(index); //added by ikill240c
         }
     }
 
@@ -557,7 +784,15 @@ public class Unit extends Selectable<UnitTemplate> implements Occupant, Movable 
 
     @Override
     protected final void removeDying() {
-        if (getAbilities().hasAbilities(Abilities.MAGIC)) {
+        // Was unconditional: `if (getAbilities().hasAbilities(Abilities.MAGIC)) setActiveChieftain(null);`
+        // - that cleared the PRIMARY chieftain slot whenever ANY chieftain-ability unit died, including an
+        // extra (converted) chieftain that was never the primary. Killing a converted chieftain would wipe
+        // out the reference to a still-alive primary chieftain, which (among other things) made campaign
+        // DefeatTrigger fire a false defeat the instant any converted chieftain died. Now only clears the
+        // primary slot when this dying unit actually IS the tracked primary. Extra chieftains need no
+        // explicit cleanup here - getExtraChieftains() already prunes dead entries lazily on every read.
+        // //added by ikill240c 2026-09-11
+        if (getAbilities().hasAbilities(Abilities.MAGIC) && getOwner().getChieftain() == this) {
             getOwner().setActiveChieftain(null);
         }
         if (!imaginary) {
@@ -617,13 +852,15 @@ public class Unit extends Selectable<UnitTemplate> implements Occupant, Movable 
         if (mounted && !on_ship) {
             mounted_building.hit(damage, direction_x, direction_y, owner);
         } else if (!isDead()) {
-            hit_points = Math.clamp(hit_points - damage, 0, getTemplate().getMaxHitPoints());
+            hit_points = Math.clamp(hit_points - damage, 0, getEffectiveMaxHitPoints()); //added by ikill240c
             if (hit_points == 0) {
+                owner.unitKilled();
                 if (mounted_building instanceof Ship ship) {
                     ship.getShipHR().removeUnit(this);
                     drown();
                 } else {
                     startDying();
+                    setDirection(-direction_x, -direction_y);
                 }
             }
         }
@@ -709,6 +946,15 @@ public class Unit extends Selectable<UnitTemplate> implements Occupant, Movable 
         return target instanceof Supply && getAbilities().hasAbilities(Abilities.BUILD);
     }
 
+        private @Nullable Building nearestSupplyBuilding(@NonNull Supply supply) {
+        UnitGrid grid = getUnitGrid();
+        BuildingFinder finder = new BuildingFinder(getOwner(), Abilities.SUPPLY_CONTAINER);
+        Region region = PathFinder.findPathRegion(grid, new TargetRegionFinder(grid, finder),
+                grid.getRegion(supply.getGridX(), supply.getGridY()));
+        Building building = region != null ? finder.getOccupantFromRegion(region, true) : null;
+        return building != null ? building.getBase() : null;
+    }
+
     private boolean canRepair(@NonNull Target target, boolean action_repair) {
         return target instanceof Building building &&
                 getAbilities().hasAbilities(Abilities.BUILD) &&
@@ -722,7 +968,30 @@ public class Unit extends Selectable<UnitTemplate> implements Occupant, Movable 
         return target instanceof Building building &&
                 !getAbilities().hasAbilities(Abilities.MAGIC) &&
                 building.getUnitContainer() != null &&
-                getOwner() == building.getOwner() &&
+                // Was `getOwner() == building.getOwner()` - a strict same-owner check that blocked
+                // allies from garrisoning each other's towers even though nothing else about a tower
+                // is exclusive to its owner (an ally's units already fight alongside you, defend your
+                // buildings via nodeDefendAllies(), etc). Scoped specifically to towers
+                // (BUILDING_TOWER) rather than every UnitContainer building - Quarters/Armory entry
+                // has real per-owner meaning (population accounting, weapon stockpiles) that wasn't
+                // part of what was asked for here, so those stay strictly same-owner.
+                // //added by ikill240c 2026-09-14
+                //
+                // Extended to also allow Quarters/Armory, but for a different reason than towers:
+                // entering either one already consumes the unit outright and credits the BUILDING
+                // OWNER's own supply count (see WorkerUnitContainer.enter()/
+                // ReproduceUnitContainer.enter() - both just call unit.removeNow() then
+                // increaseSupply(1) on the container, which belongs to the building, not the
+                // entering unit). That's exactly what "donate a unit to an ally" means: the unit
+                // disappears from the donor's roster and becomes raw material the ally can later
+                // deploy as their own new peon/warrior. No new container/controller logic is needed
+                // for this - it falls entirely out of relaxing this same ownership check the way
+                // towers already were. //added by ikill240c
+                (getOwner() == building.getOwner() //added by ikill240c 2026-09-14
+                        || (!getOwner().isEnemy(building.getOwner()) //added by ikill240c
+                                && (building.getTemplate().getTemplateID() == Race.BUILDING_TOWER //added by ikill240c 2026-09-14
+                                        || building.getTemplate().getTemplateID() == Race.BUILDING_QUARTERS //added by ikill240c
+                                        || building.getTemplate().getTemplateID() == Race.BUILDING_ARMORY))) && //added by ikill240c
                 building.getUnitContainer().canEnter(this);
     }
 
@@ -732,8 +1001,13 @@ public class Unit extends Selectable<UnitTemplate> implements Occupant, Movable 
     }
 
     private void walkToTarget(@NonNull Target target, boolean scan_attack) {
+        // findGridTargets(...)[0] can legitimately return null when no valid, unoccupied cell is found
+        // near the given target. This is called on every move/attack/interact order in the game, so a
+        // crash here would be very high-frequency. Falling back to the original (unrefined) target
+        // instead of crashing - if it's genuinely unreachable, normal pathfinding/stuck-detection
+        // handles that gracefully rather than a hard NPE. //added by ikill240c
         Target walkable_target = getUnitGrid().findGridTargets(target.getGridX(), target.getGridY(), 1, false)[0];
-        pushController(new WalkController(this, walkable_target, scan_attack));
+        pushController(new WalkController(this, walkable_target != null ? walkable_target : target, scan_attack));
     }
 
     @Override
@@ -750,11 +1024,19 @@ public class Unit extends Selectable<UnitTemplate> implements Occupant, Movable 
                 if (canBuild(target)) {
                     pushController(new PlaceBuildingController(this, (Building) target));
                 } else if (canGather(target)) {
-                    pushController(new GatherController(this, (Supply) target, ((Supply) target).getClass()));
+                    pushController(new GatherController(this, (Supply) target, ((Supply) target).getClass(),
+                            nearestSupplyBuilding((Supply) target)));
                 } else if (canRepair(target, false)) {
                     pushController(new RepairController(this, (Building) target));
                 } else if (canEnter(target)) {
                     pushController(new EnterController(this, (Building) target));
+                } else if (target instanceof Unit friendly_unit && !getOwner().isEnemy(friendly_unit.getOwner())) {
+                    // Right click on your own unit or an ally: follow them indefinitely instead of
+                    // walking to their position once and stopping there. Placed after all the more
+                    // specific friendly-target interactions above (build/gather/repair/enter all
+                    // require non-Unit targets, so this never shadows them) and before canAttack, which
+                    // should only ever apply to actual enemies. //added by ikill240c
+                    pushController(new FollowController(this, target, aggressive)); //added by ikill240c - now respects Settings.aggressive_units instead of silently ignoring it
                 } else if (canAttack(target, false)) {
                     pushController(new HuntController(this, (Selectable<?>) target));
                 } else {
@@ -777,7 +1059,8 @@ public class Unit extends Selectable<UnitTemplate> implements Occupant, Movable 
                 break;
             case GATHER_REPAIR:
                 if (canGather(target)) {
-                    pushController(new GatherController(this, (Supply) target, ((Supply) target).getClass()));
+                    pushController(new GatherController(this, (Supply) target, ((Supply) target).getClass(),
+                            nearestSupplyBuilding((Supply) target)));
                 } else if (canRepair(target, true)) {
                     pushController(new RepairController(this, (Building) target));
                 }
@@ -785,6 +1068,18 @@ public class Unit extends Selectable<UnitTemplate> implements Occupant, Movable 
             case DEFEND:
                 pushController(new DefendController(this, target));
                 break;
+            case GUARD: //added by ikill240c
+                pushController(new GuardController(this, target)); //added by ikill240c
+                break; //added by ikill240c
+            case PATROL: //added by ikill240c
+                // point_a is wherever the unit is standing the moment the order is issued, not
+                // re-evaluated later - the patrol route is fixed at order time, matching
+                // conventional RTS patrol UX ("patrol from here to there"), not a route that
+                // silently shifts if something else moves the unit before the order starts.
+                // //added by ikill240c
+                pushController(new PatrolController(this, //added by ikill240c
+                        new com.oddlabs.tt.landscape.LandscapeTarget(getGridX(), getGridY()), target)); //added by ikill240c - always aggressive now, see PatrolController's own comment for why the "aggressive" parameter was removed
+                break; //added by ikill240c
             default:
                 IO.println("Invalid action: " + action);
                 break;
@@ -806,14 +1101,22 @@ public class Unit extends Selectable<UnitTemplate> implements Occupant, Movable 
     // MAX_MAGIC_ENERGY still passes the check (== on floats is fragile). //added by ikill240c 2026-09-09 15:05
     public final boolean canDoMagic(int magic_index) {//added by ikill240c
         return !isDead() && magic_index >= 0 && magic_index < RacesResources.NUM_MAGIC && getOwner().canDoMagic(
-                magic_index) && magic_energy[magic_index] >= MAX_MAGIC_ENERGY[magic_index];
+                magic_index) && magic_energy[magic_index] >= getMagicCost(magic_index); //added by ikill240c
     }
 
     public final void doMagic(int magic_index, boolean clear_stack) {//added by ikill240c
         if (canDoMagic(magic_index)) {
             if (clear_stack)
                 clearControllerStack();
-            pushController(new MagicController(this, getOwner().getRace().getMagicFactory(magic_index)));
+            // Was unconditionally getOwner().getRace() - a converted opposite-race chieftain would
+            // cast using the RECIPIENT PLAYER's race's spells instead of its own original race's, which
+            // isn't what "convert an opposite-race chief to gain magic from both races" means. Falls
+            // back to the owner's race normally; only overridden for a cross-race converted chieftain
+            // (see setMagicRaceOverride() / Convert.java). //added by ikill240c
+            Race casting_race = magic_race_override_index >= 0
+                    ? getOwner().getWorld().getRacesResources().getRace(magic_race_override_index)
+                    : getOwner().getRace(); //added by ikill240c
+            pushController(new MagicController(this, casting_race.getMagicFactory(magic_index)));
             magic_energy[magic_index] = 0f;
             last_magic_index = magic_index;
 
@@ -824,15 +1127,84 @@ public class Unit extends Selectable<UnitTemplate> implements Occupant, Movable 
         }
     }
 
+    /**
+     * Marks this unit as casting spells with a different race's magic than its owner's - set on a
+     * converted chieftain whose original race differs from the recipient's own race. Magic
+     * ENABLEMENT (Player.canDoMagic()'s campaign-progression gating) is intentionally still checked
+     * against the recipient player, not the original race - that gating tracks the player's own
+     * campaign progress, not a property of any specific unit they happen to control. //added by ikill240c
+     */
+    public final void setMagicRaceOverride(int race_index) { //added by ikill240c
+        this.magic_race_override_index = race_index;
+    }
+
+    // Public getter for the same field doMagic() above already reads - needed by the magic button
+    // UI (ActionButtonPanel) so it can show the icons/tooltips for whichever race this specific
+    // unit is ACTUALLY casting with, rather than always assuming the selection's owner's own race.
+    // Without this, a converted chieftain's magic worked correctly server-side but the buttons
+    // shown to the player still displayed the recipient's own race's spells - wrong icons, wrong
+    // tooltips, and (worse) potentially letting the player click a button that then casts a
+    // different spell than the one shown. -1 (the field's default) means "no override - use this
+    // unit's owner's own race", matching doMagic()'s own check. //added by ikill240c
+    public final int getMagicRaceOverride() { //added by ikill240c
+        return magic_race_override_index; //added by ikill240c
+    }
+
     private void triggerChiefsCourage(int magic_index) {//added by ikill240c
+        if (!getOwner().canUseChiefsCourage()) //added by ikill240c
+            return; // campaign scenarios can disable this until a later island unlocks it //added by ikill240c
+        if (!getOwner().isChiefsCourageReady()) //added by ikill240p 2026-09-14 - new cooldown gate: Chiefs Courage previously fired on every single successful cast with no limit
+            return; // still on cooldown from a previous trigger - see Player.CHIEFS_COURAGE_COOLDOWN_SECONDS //added by ikill240p 2026-09-14
         float duration = magic_index >= 0 && magic_index < COURAGE_DURATION.length ? COURAGE_DURATION[magic_index] : 6f;
 
-        for (var s : getOwner().getUnits().getSet()) {
-            if (s instanceof Unit unit && !unit.isDead()) {
-                unit.applyCourageBuff(duration, COURAGE_SPEED_MULT, COURAGE_RANGE_BONUS,
-                        COURAGE_ATTACK_SPEED_MULT, COURAGE_COMBAT_MULT);
+        // Escalation: each use makes the next one 1.5% stronger, compounding - the FIRST use is
+        // the baseline (no bonus yet), matching "each TIME it's used, it increases" reading as
+        // "each use after this one gets stronger", not "this very first cast is already boosted".
+        // incrementAndGetChiefsCourageUses() returns the count INCLUDING this cast, so subtracting
+        // 1 gives "how many previous casts happened before this one". //added by ikill240c
+        int previous_uses = getOwner().incrementAndGetChiefsCourageUses() - 1; //added by ikill240c
+        float escalation = (float) Math.pow(1.015, previous_uses); //added by ikill240c
+        // Multipliers above 1.0 (speed/attack-speed/combat) escalate the BONUS portion (the amount
+        // above 1.0), not the whole multiplier - escalating the whole value would also inflate the
+        // "no change" baseline itself, which isn't what "the buff gets stronger" should mean.
+        // Range bonus and duration have no such baseline to preserve (a flat addition and a
+        // duration respectively), so those scale directly. //added by ikill240c
+        float speed_mult = 1f + (COURAGE_SPEED_MULT - 1f) * escalation; //added by ikill240c
+        float attack_speed_mult = 1f + (COURAGE_ATTACK_SPEED_MULT - 1f) * escalation; //added by ikill240c
+        float combat_mult = 1f + (COURAGE_COMBAT_MULT - 1f) * escalation; //added by ikill240c
+        float range_bonus_value = COURAGE_RANGE_BONUS * escalation; //added by ikill240c
+        float escalated_duration = duration * escalation; //added by ikill240c
+
+        // Reaches every teammate's units too (not just the caster's own army), per explicit
+        // request - looping over all world players and filtering by isAlly() (rather than e.g. a
+        // dedicated "team roster" list) matches the existing team-comparison pattern already used
+        // by Player.teamHasBuilding(). Unified into ONE loop (previously the full combat buff only
+        // reached the caster's own army while a separate loop gave allies just the cooldown
+        // reduction) - now the whole buff package, including the cooldown reduction, reaches
+        // allies alike; applyCourageBuff() stacks rather than overwrites, so this being a single
+        // pass per ally doesn't lose anything the old two-loop version had. //added by ikill240p 2026-09-14
+        float caster_x = getPositionX(); //added by ikill240p 2026-09-14 - the buff now radiates out from wherever the casting chieftain actually is, not the whole map
+        float caster_y = getPositionY(); //added by ikill240p 2026-09-14
+        for (Player player : getOwner().getWorld().getPlayers()) { //added by ikill240p 2026-09-14
+            if (!getOwner().isAlly(player)) //added by ikill240p 2026-09-14 - skip anyone who isn't the caster or one of the caster's teammates
+                continue; //added by ikill240p 2026-09-14
+            for (var s : player.getUnits().getSet()) {
+                if (s instanceof Unit unit && !unit.isDead()) {
+                    // Radius check: Chiefs Courage previously buffed every allied unit on the entire
+                    // map unconditionally, regardless of how far away it was from the caster. Now
+                    // only allies within COURAGE_RADIUS of the casting chieftain are affected.
+                    // //added by ikill240p 2026-09-14
+                    float dx = unit.getPositionX() - caster_x; //added by ikill240p 2026-09-14
+                    float dy = unit.getPositionY() - caster_y; //added by ikill240p 2026-09-14
+                    if (dx * dx + dy * dy > COURAGE_RADIUS * COURAGE_RADIUS) //added by ikill240p 2026-09-14
+                        continue; //added by ikill240p 2026-09-14 - too far away from the caster to feel the effect
+                    unit.applyCourageBuff(escalated_duration, speed_mult, range_bonus_value, //added by ikill240c
+                            attack_speed_mult, combat_mult, COOLDOWN_REDUCTION); //added by ikill240c
+                }
             }
         }
+
+        getOwner().chiefsCourageTriggered(); // starts the cooldown for NEXT time //added by ikill240p 2026-09-14
 
         float z = getPositionZ() + getHitOffsetZ();
         getOwner().getWorld().getAudio().newAudio(new AudioParameters<>(
@@ -850,7 +1222,7 @@ public class Unit extends Selectable<UnitTemplate> implements Occupant, Movable 
     }
 
     public final float getMagicProgress(int magic_index) {
-        return magic_energy[magic_index] / MAX_MAGIC_ENERGY[magic_index];
+        return magic_energy[magic_index] / getMagicCost(magic_index); //added by ikill240c
     }
 
     public final void switchAnimation(float anim_speed, @NonNull int animation) {
@@ -882,6 +1254,15 @@ public class Unit extends Selectable<UnitTemplate> implements Occupant, Movable 
     public final float getMountOffset() {
         assert !isDead();
         return mount_offset;
+    }
+
+    // Merged from boats_on_steam - a public setter for mount_offset, needed by
+    // ShipAllocation.updateFinal()/updateIntermediate() (the boarding-animation feature) to adjust
+    // a boarding unit's vertical seat offset from outside this class as it progresses toward its
+    // final seated position. Previously mount_offset was only ever assigned directly from within
+    // Unit itself. //added by ikill240c
+    public final void setMountOffset(float offset) { //added by ikill240c
+        mount_offset = offset; //added by ikill240c
     }
 
     @Override
