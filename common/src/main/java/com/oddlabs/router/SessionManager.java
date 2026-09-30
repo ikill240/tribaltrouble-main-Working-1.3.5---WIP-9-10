@@ -135,6 +135,23 @@ final class SessionManager {
 
         private final long next_timeout;
 
+        // REVERTED - this was changed to `millis + info.milliseconds_per_heartbeat * 500`
+        // (30 seconds) based on a misdiagnosis: I read this as a pure "how long to tolerate before
+        // giving up on a silent client" grace period, and treated 60ms as far too aggressive for
+        // that purpose. It's not that. process()/heartbeat() above show what this Timeout actually
+        // gates: once `millis >= next_timeout`, the server sends the client a heartbeat
+        // (client.heartbeat(next_tick)) and immediately reschedules the next one at the same
+        // interval - this IS the heartbeat send interval, not a disconnect grace period. 60ms
+        // matches the game's own tick rate (PeerHub.MILLISECONDS_PER_HEARTBEAT) by design, so the
+        // client learns the current server time roughly once per tick and stays tightly
+        // synchronized. Multiplying it by 500x didn't make the game 500x more tolerant of a stall -
+        // it made the server tell the client the current time 500x less often, so the client's own
+        // stall-detection (PeerHub.animate()'s `getTick() == server_tick` check) sat waiting on a
+        // heartbeat that was now scheduled 30 seconds out, showing "waiting for players" on a
+        // roughly 30-second cadence and eventually disconnecting - exactly the two symptoms this
+        // was supposed to fix, both caused by this exact change instead. Confirmed by diffing
+        // against a version from before this fix existed, which the reporter confirmed works
+        // correctly with the original, unmultiplied value. //added by ikill240c
         Timeout(int id, @NonNull RouterClient client, long millis) {
             this.id = id;
             this.next_timeout = millis + client.getSession().info.milliseconds_per_heartbeat;

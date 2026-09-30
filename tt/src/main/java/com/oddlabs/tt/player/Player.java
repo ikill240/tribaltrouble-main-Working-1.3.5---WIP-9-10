@@ -27,6 +27,9 @@ import com.oddlabs.tt.model.behaviour.NullController;
 import com.oddlabs.tt.model.weapon.IronAxeWeapon;
 import com.oddlabs.tt.model.weapon.RockAxeWeapon;
 import com.oddlabs.tt.model.weapon.RubberAxeWeapon;
+import com.oddlabs.tt.player.ai.ExpertAI; //added by ikill240c
+import com.oddlabs.tt.player.fable.FableAI; //added by ikill240c
+import com.oddlabs.tt.player.ultra.UltraAI; //added by ikill240c
 import com.oddlabs.tt.util.Target;
 import org.joml.Vector4fc;
 import org.jspecify.annotations.NonNull;
@@ -197,6 +200,12 @@ public final class Player implements PlayerInterface {
     private @NonNull Formation resolveFormation(Selectable<?> @NonNull [] selection) { //added by ikill240c
         java.util.Map<Formation, Integer> counts = new java.util.HashMap<>(); //added by ikill240c
         for (Selectable<?> s : selection) { //added by ikill240c
+            // A unit that died (or changed owner) between the order being issued and executed arrives
+            // here as null - the network layer can't hand over a unit that no longer exists. Skipped,
+            // like every other loop over a selection already does via isValid(); without this, one dead
+            // unit made the whole group's move order throw and get dropped. //added by ikill240c
+            if (!isValid(s)) //added by ikill240c
+                continue; //added by ikill240c
             Formation f = s.getFormation(); //added by ikill240c
             if (f != null) //added by ikill240c
                 counts.merge(f, 1, Integer::sum); //added by ikill240c
@@ -377,6 +386,19 @@ public final class Player implements PlayerInterface {
     public @Nullable AI getAI() {
         return ai;
     }
+
+    // The Expert, Ultra and Fable AIs (integrated from the reference project) were written against the
+    // reference's command rules: casting a spell clears the chieftain's order stack first, and a group
+    // move order spreads the units over free grid cells. This project changed both for human players
+    // (spells keep a standing Guard/Patrol/Follow order alive; moves use formations), and applying those
+    // rules to these three AIs changes what their orders do - chieftains resume stale orders after a
+    // spell, and units whose formation spot comes back empty don't move at all. Checked per player, so
+    // human players and AdvancedAI keep this project's rules. Deterministic on every lockstep client,
+    // since each player's AI is fixed at game start. //added by ikill240c
+    // Public: also used by Unit.updateStuckCheck() to leave these AIs' units to the AIs themselves. //added by ikill240c
+    public boolean usesReferenceCommandRules() { //added by ikill240c
+        return ai instanceof ExpertAI || ai instanceof UltraAI || ai instanceof FableAI; //added by ikill240c
+    } //added by ikill240c
 
     public @Nullable Building buildBuilding(int building_type, int grid_x, int grid_y) {
         BuildingSiteScanFilter filter = new BuildingSiteScanFilter(world.getUnitGrid(), getRace().getBuildingTemplate(
@@ -720,7 +742,7 @@ public final class Player implements PlayerInterface {
             // every AI call site already using it - VikingChieftainAI/NativeChieftainAI/
             // AdvancedAI) instead pushes MagicController on top of whatever's currently active, so
             // the underlying order resumes normally once the spell finishes. //added by ikill240c
-            chieftain.doMagic(magic, false); //added by ikill240c
+            chieftain.doMagic(magic, usesReferenceCommandRules()); //added by ikill240c - false for humans/AdvancedAI (see above), true (the reference's behavior) for Expert/Ultra/Fable
     }
 
     @Override
@@ -785,7 +807,8 @@ public final class Player implements PlayerInterface {
         // the AI picks them and the moment the order is issued (a construction site blown up while
         // builders are walking to it), which crashed the game. Drop the order instead.
         // //added by ikill240c 2026-09-10 16:00
-        if (target.isDead()) //added by ikill240c 2026-09-10 16:00
+        // The target can arrive as null if it died or was removed before this order executed - nothing left to attack, so the order is simply dropped. //added by ikill240c
+        if (target == null || target.isDead()) //added by ikill240c 2026-09-10 16:00
             return; //added by ikill240c 2026-09-10 16:00
         for (Selectable<?> selection1 : selection) {
             if (isValid(selection1)) {
@@ -831,7 +854,9 @@ public final class Player implements PlayerInterface {
         int grid_size = world.getUnitGrid().getGridSize();
         if (grid_x < 0 || grid_x >= grid_size || grid_y < 0 || grid_y >= grid_size)
             return;
-        Target[] targets = computeFormationTargets(selection, grid_x, grid_y);
+        Target[] targets = usesReferenceCommandRules() //added by ikill240c
+                ? world.getUnitGrid().findGridTargets(grid_x, grid_y, selection.length, selection.length != 1) //added by ikill240c - the reference's move targets
+                : computeFormationTargets(selection, grid_x, grid_y);
         for (int i = 0; i < selection.length; i++) {
             if (isValid(selection[i]) && targets[i] != null)
                 selection[i].initTarget(targets[i], action, aggressive);
@@ -937,7 +962,8 @@ public final class Player implements PlayerInterface {
     @Override //added by ikill240c 2026-09-10 16:45
     public void queueTarget(Selectable<?> @NonNull [] selection, @NonNull Target target, @NonNull Action action, //added by ikill240c 2026-09-10 16:45
             boolean aggressive) { //added by ikill240c 2026-09-10 16:45
-        if (target.isDead()) //added by ikill240c 2026-09-10 16:45
+        // The target can arrive as null if it died or was removed before this order executed - nothing left to attack, so the order is simply dropped. //added by ikill240c
+        if (target == null || target.isDead()) //added by ikill240c 2026-09-10 16:45
             return; //added by ikill240c 2026-09-10 16:45
         for (Selectable<?> selectable : selection) { //added by ikill240c 2026-09-10 16:45
             if (isValid(selectable)) //added by ikill240c 2026-09-10 16:45

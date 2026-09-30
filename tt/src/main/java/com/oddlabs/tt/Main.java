@@ -22,6 +22,16 @@ public final class Main {
         logger.log(Level.SEVERE, "Critical Failure", t);
 
         if (!Boolean.getBoolean("com.oddlabs.tt.developer")) {
+            // A custom map that couldn't be loaded (usually: a multiplayer client doesn't have the host's map,
+            // or has a different copy) - CustomMapGenerator's message already says exactly what to do, so show
+            // that instead of a raw exception. Looked up before the cause chain is unwrapped below. //added by ikill240c
+            String custom_map_problem = null; //added by ikill240c
+            for (Throwable c = t; c != null && custom_map_problem == null; c = c.getCause()) { //added by ikill240c
+                if (c instanceof java.io.UncheckedIOException && c.getMessage() != null //added by ikill240c
+                        && c.getMessage().startsWith(com.oddlabs.tt.resource.CustomMapGenerator.LOAD_FAILURE_PREFIX)) //added by ikill240c
+                    custom_map_problem = c.getMessage().substring( //added by ikill240c
+                            com.oddlabs.tt.resource.CustomMapGenerator.LOAD_FAILURE_PREFIX.length()); //added by ikill240c
+            } //added by ikill240c
             while (t.getCause() != null) {
                 t = t.getCause();
             }
@@ -33,7 +43,9 @@ public final class Main {
             // can hit under different conditions (bigger maps, longer sessions). Give it a message
             // that actually suggests something the player can do about it, same spirit as the
             // "error_message" bundle string. //added by ikill240c 2026-09-17
-            if (t instanceof OutOfMemoryError) { //added by ikill240c 2026-09-17
+            if (custom_map_problem != null) { //added by ikill240c
+                error_msg = i18n("error_custom_map", custom_map_problem); //added by ikill240c
+            } else if (t instanceof OutOfMemoryError) { //added by ikill240c 2026-09-17
                 error_msg = i18n("error_out_of_memory"); //added by ikill240c 2026-09-17
             } else { //added by ikill240c 2026-09-17
                 try {

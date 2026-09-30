@@ -48,6 +48,12 @@ public final class GatherController<S extends Supply> extends Controller {
         return assigned_building;
     }
 
+    // Needed by the ultra AI package (ResourceTracker.java, EconomyManager.java) to check what
+    // supply a gathering unit is currently assigned to. //added by ikill240c
+    public @Nullable S getSupply() { //added by ikill240c
+        return supply; //added by ikill240c
+    } //added by ikill240c
+
     @Override
     public @NonNull String getKey() {
         return super.getKey() + supply_type;

@@ -7,14 +7,30 @@ import com.oddlabs.tt.global.Settings;
 import com.oddlabs.tt.landscape.HeightMap;
 import com.oddlabs.tt.landscape.LandscapeBaker;
 import com.oddlabs.tt.procedural.Landscape;
+import com.oddlabs.tt.render.Renderer; //added by ikill240c
 import com.oddlabs.tt.render.Texture;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable; //added by ikill240c
 import org.lwjgl.opengl.GL11;
 
+import java.io.File; //added by ikill240c
+import java.io.FileNotFoundException; //added by ikill240c
 import java.io.IOException;
+import java.io.ByteArrayInputStream; //added by ikill240c
+import java.io.ByteArrayOutputStream; //added by ikill240c
+import java.io.InputStream; //added by ikill240c
+import java.io.OutputStream; //added by ikill240c
+import java.nio.file.StandardCopyOption; //added by ikill240c
+import java.util.zip.GZIPInputStream; //added by ikill240c
+import java.util.zip.GZIPOutputStream; //added by ikill240c
 import java.io.Serial;
 import java.io.UncheckedIOException;
+import java.nio.file.Files; //added by ikill240c
+import java.nio.file.InvalidPathException; //added by ikill240c
+import java.nio.file.Path; //added by ikill240c
+import java.security.MessageDigest; //added by ikill240c
+import java.security.NoSuchAlgorithmException; //added by ikill240c
+import java.util.HexFormat; //added by ikill240c
 import java.time.Duration;
 import java.time.Instant;
 
@@ -48,13 +64,22 @@ import java.time.Instant;
  */
 public final class CustomMapGenerator implements WorldGenerator { //added by ikill240c
     @Serial
-    private static final long serialVersionUID = 2; //added by ikill240c - bumped: field shape changed from an AuthoredTerrain to a String path
+    private static final long serialVersionUID = 3; //added by ikill240c - bumped again: added map_file_name and map_fingerprint
 
     private static final int TEXELS_PER_CHUNK = 512;
     private static final int IDEAL_TEXELS_PER_DETAIL = 256;
     private static final float IDEAL_DETAIL_ALPHA = .15f;
 
     private final @NonNull String map_file_path; //added by ikill240c
+    // Multiplayer: this object is sent to every player, and map_file_path is the HOST's path, which doesn't
+    // exist on anyone else's computer (e.g. a Linux host's /home/... path on a Windows client) - that crashed
+    // every client at game start. Each machine now finds its own copy by file name (see resolveMapFile()),
+    // and the fingerprint (SHA-256 of the host's file) makes sure every player loads exactly the same map;
+    // a different file would desync the game. Null only if the host couldn't read its own file. //added by ikill240c
+    private final @NonNull String map_file_name; //added by ikill240c
+    private final @Nullable String map_fingerprint; //added by ikill240c
+    /** Prefix of every map-loading failure message; Main.fail() recognizes it and shows the rest to the player. */ //added by ikill240c
+    public static final String LOAD_FAILURE_PREFIX = "Failed to load custom map: "; //added by ikill240c
     private final int meters_per_world;
     private final Landscape.@NonNull TerrainType terrain;
     private final int grid_units;
@@ -62,6 +87,15 @@ public final class CustomMapGenerator implements WorldGenerator { //added by iki
     public CustomMapGenerator(@NonNull String map_file_path, int meters_per_world, //added by ikill240c
             Landscape.@NonNull TerrainType terrain) {
         this.map_file_path = map_file_path; //added by ikill240c
+        // Runs on the host (the machine that picked the map), so its own path is valid here. //added by ikill240c
+        this.map_file_name = new File(map_file_path).getName(); //added by ikill240c
+        String fingerprint; //added by ikill240c
+        try { //added by ikill240c
+            fingerprint = fingerprint(Path.of(map_file_path)); //added by ikill240c
+        } catch (IOException | InvalidPathException e) { //added by ikill240c
+            fingerprint = null; //added by ikill240c - generate() reports the real problem when it tries to load
+        } //added by ikill240c
+        this.map_fingerprint = fingerprint; //added by ikill240c
         this.terrain = terrain;
         // meters_per_world/grid_units are DERIVED FROM THE ACTUAL AUTHORED FILE's saved height
         // channel dimensions, NOT the meters_per_world parameter above (which comes from the
@@ -133,6 +167,62 @@ public final class CustomMapGenerator implements WorldGenerator { //added by iki
         return Landscape.getFogInfo(terrain, meters_per_world);
     }
 
+
+    /** Folder every player can put shared custom maps in: <game folder>/maps. */ //added by ikill240c
+    public static @NonNull Path sharedMapsDir() { //added by ikill240c
+        Path game_dir = Renderer.getLocalInput().getGameDir(); //added by ikill240c
+        return (game_dir != null ? game_dir : Path.of("")).resolve("maps"); //added by ikill240c
+    } //added by ikill240c
+
+    // Finds this machine's copy of the map: the host's own path first (the host itself, or players who keep maps
+    // in an identical folder), then <game folder>/maps/<file name>. A copy only counts if its fingerprint matches
+    // the host's. Failures carry LOAD_FAILURE_PREFIX so Main.fail() shows the player what to do instead of a raw
+    // exception. //added by ikill240c
+    private @NonNull File resolveMapFile() { //added by ikill240c
+        Path shared_dir = sharedMapsDir(); //added by ikill240c
+        Path host_path = null; //added by ikill240c
+        try { //added by ikill240c
+            host_path = Path.of(map_file_path); //added by ikill240c
+        } catch (InvalidPathException e) { //added by ikill240c
+            // The host's path isn't even valid on this operating system - skip straight to the maps folder. //added by ikill240c
+        } //added by ikill240c
+        Path mismatched = null; //added by ikill240c
+        for (Path candidate : new Path[]{host_path, shared_dir.resolve(map_file_name), //added by ikill240c
+                shared_dir.resolve(alternateFileName())}) { //added by ikill240c - the name a download is saved under if map_file_name is taken
+            if (candidate == null || !Files.isRegularFile(candidate)) //added by ikill240c
+                continue; //added by ikill240c
+            if (map_fingerprint == null) //added by ikill240c
+                return candidate.toFile(); //added by ikill240c
+            try { //added by ikill240c
+                if (map_fingerprint.equals(fingerprint(candidate))) //added by ikill240c
+                    return candidate.toFile(); //added by ikill240c
+            } catch (IOException e) { //added by ikill240c
+                continue; //added by ikill240c
+            } //added by ikill240c
+            mismatched = candidate; //added by ikill240c
+        } //added by ikill240c
+        if (mismatched != null) { //added by ikill240c
+            throw new UncheckedIOException(LOAD_FAILURE_PREFIX + "Your copy of \"" + map_file_name + "\" (" + mismatched //added by ikill240c
+                    + ") is different from the host's. Every player needs the exact same file - copy the host's" //added by ikill240c
+                    + " version into " + shared_dir + " and join again.", new IOException("map fingerprint mismatch")); //added by ikill240c
+        } //added by ikill240c
+        throw new UncheckedIOException(LOAD_FAILURE_PREFIX + "This game uses the custom map \"" + map_file_name //added by ikill240c
+                + "\", which isn't on this computer. Every player needs their own copy - put " + map_file_name //added by ikill240c
+                + " in " + shared_dir + " and join again.", new FileNotFoundException(map_file_name)); //added by ikill240c
+    } //added by ikill240c
+
+    private static @NonNull String fingerprint(@NonNull Path file) throws IOException { //added by ikill240c
+        try (InputStream in = Files.newInputStream(file)) { //added by ikill240c
+            MessageDigest digest = MessageDigest.getInstance("SHA-256"); //added by ikill240c
+            byte[] buffer = new byte[1 << 16]; //added by ikill240c
+            for (int n; (n = in.read(buffer)) > 0; ) //added by ikill240c
+                digest.update(buffer, 0, n); //added by ikill240c
+            return HexFormat.of().formatHex(digest.digest()); //added by ikill240c
+        } catch (NoSuchAlgorithmException e) { //added by ikill240c
+            throw new IOException(e); //added by ikill240c - SHA-256 is always available in the JDK
+        } //added by ikill240c
+    } //added by ikill240c
+
     @Override
     public @NonNull WorldInfo generate(int num_players, int initial_unit_count, float random_start_pos,
             boolean team_together, int @Nullable [] player_teams) { //added by ikill240c
@@ -144,9 +234,10 @@ public final class CustomMapGenerator implements WorldGenerator { //added by iki
         // for that situation rather than inventing a new one. //added by ikill240c
         AuthoredTerrain authored_terrain; //added by ikill240c
         try { //added by ikill240c
-            authored_terrain = AuthoredTerrain.load(new java.io.File(map_file_path)); //added by ikill240c
+            authored_terrain = AuthoredTerrain.load(resolveMapFile()); //added by ikill240c
         } catch (IOException e) { //added by ikill240c
-            throw new UncheckedIOException("Failed to load custom map: " + map_file_path, e); //added by ikill240c
+            throw new UncheckedIOException(LOAD_FAILURE_PREFIX + "Couldn't read the custom map \"" + map_file_name //added by ikill240c
+                    + "\": " + e.getMessage(), e); //added by ikill240c
         } //added by ikill240c
 
         int colormap_size = grid_units * getTexelsPerGridUnit();
@@ -188,4 +279,65 @@ public final class CustomMapGenerator implements WorldGenerator { //added by iki
                 landscape.getStartingLocations(),
                 blend_infos);
     }
+
+    // ---------------- automatic multiplayer transfer (see Server/Client "custom map transfer") ---------------- //added by ikill240c
+
+    public @NonNull String getMapFileName() { //added by ikill240c
+        return map_file_name; //added by ikill240c
+    } //added by ikill240c
+
+    /** True if this computer already has a copy identical to the host's (so nothing needs downloading). */ //added by ikill240c
+    public boolean hasLocalCopy() { //added by ikill240c
+        try { //added by ikill240c
+            resolveMapFile(); //added by ikill240c
+            return true; //added by ikill240c
+        } catch (UncheckedIOException e) { //added by ikill240c
+            return false; //added by ikill240c
+        } //added by ikill240c
+    } //added by ikill240c
+
+    /** Host side: the map file, gzip-compressed, ready to be sent to players who don't have it. */ //added by ikill240c
+    public byte @NonNull [] readCompressed() throws IOException { //added by ikill240c
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream(); //added by ikill240c
+        try (InputStream in = Files.newInputStream(resolveMapFile().toPath()); //added by ikill240c
+             OutputStream out = new GZIPOutputStream(bytes, 1 << 16)) { //added by ikill240c
+            in.transferTo(out); //added by ikill240c
+        } //added by ikill240c
+        return bytes.toByteArray(); //added by ikill240c
+    } //added by ikill240c
+
+    /** //added by ikill240c
+     * Player side: unpacks a map received from the host, checks it is byte-for-byte the host's file, and saves it in
+     * the shared maps folder so resolveMapFile() finds it. Saved under the original name, or under
+     * alternateFileName() if a different file already has that name (it's never overwritten). //added by ikill240c
+     */ //added by ikill240c
+    public @NonNull Path installDownloadedMap(byte @NonNull [] compressed) throws IOException { //added by ikill240c
+        Path dir = sharedMapsDir(); //added by ikill240c
+        Files.createDirectories(dir); //added by ikill240c
+        Path temp = Files.createTempFile(dir, "download-", ".part"); //added by ikill240c
+        try { //added by ikill240c
+            try (InputStream in = new GZIPInputStream(new ByteArrayInputStream(compressed), 1 << 16); //added by ikill240c
+                 OutputStream out = Files.newOutputStream(temp)) { //added by ikill240c
+                in.transferTo(out); //added by ikill240c
+            } //added by ikill240c
+            if (map_fingerprint != null && !map_fingerprint.equals(fingerprint(temp))) //added by ikill240c
+                throw new IOException("the received map doesn't match the host's file"); //added by ikill240c
+            AuthoredTerrain.load(temp.toFile()); //added by ikill240c - fail now, in the lobby, if it can't be read
+            Path target = dir.resolve(map_file_name); //added by ikill240c
+            if (Files.exists(target)) //added by ikill240c
+                target = dir.resolve(alternateFileName()); //added by ikill240c
+            Files.move(temp, target, StandardCopyOption.REPLACE_EXISTING); //added by ikill240c
+            return target; //added by ikill240c
+        } finally { //added by ikill240c
+            Files.deleteIfExists(temp); //added by ikill240c
+        } //added by ikill240c
+    } //added by ikill240c
+
+    // "<name>-<first 8 fingerprint chars>.ttmap": used when a player already has a different map with the same name. //added by ikill240c
+    private @NonNull String alternateFileName() { //added by ikill240c
+        String tag = map_fingerprint != null ? map_fingerprint.substring(0, 8) : "copy"; //added by ikill240c
+        int dot = map_file_name.lastIndexOf('.'); //added by ikill240c
+        return dot > 0 ? map_file_name.substring(0, dot) + "-" + tag + map_file_name.substring(dot) //added by ikill240c
+                : map_file_name + "-" + tag; //added by ikill240c
+    } //added by ikill240c
 }

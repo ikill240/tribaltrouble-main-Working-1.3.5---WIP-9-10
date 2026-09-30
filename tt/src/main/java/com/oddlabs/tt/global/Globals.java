@@ -88,7 +88,21 @@ public final class Globals {
     public static final boolean process_landscape = true;
     public static final boolean process_trees = true;
     public static boolean process_misc = true;
-    public static final boolean process_shadows = true;
+
+    // Was a hardcoded `public static final boolean process_shadows = true` - shadows were
+    // unconditionally rendered for every visible unit/building regardless of hardware or player
+    // preference, with no way to turn them off even from the Graphics settings panel. Shadow
+    // rendering is a real, scene-proportional cost (see SelectableShadowRenderer.renderShadows() -
+    // one draw call per selected/shadowed unit on screen), and on a large, busy scene that cost is
+    // sustained for as long as the game runs - which can also crowd out the same thread's own
+    // network/heartbeat processing, contributing to disconnects during exactly the same sessions
+    // where framerate is suffering. Tied to the existing, already-user-facing graphic_detail
+    // setting instead: Low detail now also turns shadows off, giving players an actual lever to
+    // pull for this cost rather than always paying it no matter what they've set their other
+    // graphics options to. //added by ikill240c
+    public static boolean processShadows() { //added by ikill240c
+        return Settings.getSettings().graphic_detail != DETAIL_LOW; //added by ikill240c
+    } //added by ikill240c
 
     public static boolean draw_status = false;
     public static final boolean draw_landscape = true;

@@ -1,5 +1,6 @@
 package com.oddlabs.tt.gui;
 
+import com.oddlabs.tt.delegate.ModalDelegate; //added by ikill240c
 import com.oddlabs.tt.render.GUIRenderer;
 import org.joml.Vector4fc;
 import org.jspecify.annotations.NonNull;
@@ -81,7 +82,16 @@ public final class PulldownButton<T> extends GUIObject {
             menu_x = (int) getRootX();
         }
         menu.setPos(menu_x, (int) (getRootY() - menu.getHeight()));
-        gui_root.getDelegate().addChild(menu);
+        // Was always gui_root.getDelegate() - the main game-screen layer. Pop-up forms (addModalForm) live on a
+        // separate ModalDelegate layer drawn above that one, so a pulldown inside a pop-up put its list *under*
+        // the pop-up, where it couldn't be seen or clicked (first seen in the multiplayer Advanced settings
+        // pop-up). While a pop-up is open it is the only thing that receives input, so the list goes on the top
+        // pop-up's layer instead; with no pop-up open, behavior is unchanged. //added by ikill240c
+        ModalDelegate modal = gui_root.getModalDelegate(); //added by ikill240c
+        if (modal != null) //added by ikill240c
+            modal.addChild(menu); //added by ikill240c
+        else //added by ikill240c
+            gui_root.getDelegate().addChild(menu);
     }
 
     private void deactivateMenu() {

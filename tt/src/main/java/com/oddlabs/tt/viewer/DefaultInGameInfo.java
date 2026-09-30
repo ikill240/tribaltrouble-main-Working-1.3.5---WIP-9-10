@@ -189,9 +189,19 @@ public class DefaultInGameInfo implements InGameInfo {
                 fill = switch (ai.getDifficulty()) { //added by ikill240c
                     case 0 -> RosterTemplate.Fill.EASY_AI; //added by ikill240c
                     case 1 -> RosterTemplate.Fill.NORMAL_AI; //added by ikill240c
-                    case 2 -> RosterTemplate.Fill.HARD_AI; //added by ikill240c
-                    default -> RosterTemplate.Fill.INSANE_AI; //added by ikill240c
+                    default -> RosterTemplate.Fill.HARD_AI; //added by ikill240c - "Insane" is no longer a selectable lobby tier (see RosterTemplate.Fill), so this default (any AdvancedAI difficulty above Normal) can only mean Hard now
                 };
+            } else if (player.getAI() instanceof com.oddlabs.tt.player.ai.ExpertAI) { //added by ikill240c
+                // Expert/Ultra/Fable are separate AI implementations, not AdvancedAI subclasses, so
+                // without their own branches here they fell through to the "else" below and got
+                // treated as an OPEN seat - silently dropping the selection on replay, the same bug
+                // already fixed once for Expert alone before Ultra/Fable existed.
+                // //added by ikill240c
+                fill = RosterTemplate.Fill.EXPERT_AI; //added by ikill240c
+            } else if (player.getAI() instanceof com.oddlabs.tt.player.ultra.UltraAI) { //added by ikill240c
+                fill = RosterTemplate.Fill.ULTRA_AI; //added by ikill240c
+            } else if (player.getAI() instanceof com.oddlabs.tt.player.fable.FableAI) { //added by ikill240c
+                fill = RosterTemplate.Fill.FABLE_AI; //added by ikill240c
             } else { //added by ikill240c
                 // Not slot 0 and not AI - either another human (not present in a fresh SP replay
                 // lobby, so treated as an open seat) or some other non-AdvancedAI controller.

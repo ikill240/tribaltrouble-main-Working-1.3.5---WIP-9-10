@@ -2,6 +2,7 @@ package com.oddlabs.tt.net;
 
 import com.oddlabs.net.ARMIEvent;
 import com.oddlabs.net.ARMIEventWriter;
+import com.oddlabs.net.ARMIHandlerException; //added by ikill240c
 import com.oddlabs.net.ARMIInterfaceMethods;
 import com.oddlabs.net.IllegalARMIEventException;
 import com.oddlabs.net.NetworkSelector;
@@ -216,6 +217,12 @@ public final class PeerHub implements Animated, RouterHandler {
         }
         try {
             event.execute(interface_methods, peer);
+        } catch (ARMIHandlerException e) { //added by ikill240c
+            // The event was valid; our own handler threw while processing it. That's a local bug, not
+            // grounds to kick the sender - log the real cause instead. See ARMIHandlerException.
+            // //added by ikill240c
+            logger.log(Level.SEVERE, "Handling an event from " + peer + " failed; ignored, peer stays connected", //added by ikill240c
+                    e.getCause()); //added by ikill240c
         } catch (IllegalARMIEventException e) {
             peerDisconnected(peer, e.getMessage());
         }
@@ -426,31 +433,58 @@ public final class PeerHub implements Animated, RouterHandler {
         sentInitInfo = true;
     }
 
+    // Was one unbounded updateSpectatorInfo() message holding every tree on the map. A large map has tens of
+    // thousands of trees, and a single event has to fit both the connection's 64KB buffer and ARMIEvent's
+    // signed-short size field (32767 bytes). ARMIEvent.write() doesn't check this, so it threw
+    // BufferOverflowException and crashed the game as soon as a large multiplayer game started (this runs at
+    // game start whether or not anyone spectates). Sent in chunks instead: each chunk is a complete message in
+    // the same "T ..." format with the same -10000 marker, just fewer trees - the receiving side is the
+    // matchmaking server, which isn't part of this codebase, so the format itself isn't changed. //added by ikill240c
+    private static final int TREE_CHUNK_SIZE = 2000; //added by ikill240c - well under both limits
+
     private void sendTrees() {
         List<int[]> trees = local_player.getWorld().getTreePositions();
-        StringBuilder info = new StringBuilder("T ");
-        for (int[] pos : trees) {
-            info.append(pos[0]).append(' ').append(pos[1]).append(' ');
-        }
-        info.append('\n');
-        Network.getMatchmakingClient().getInterface().updateSpectatorInfo(-10000, info.toString());
+        for (int start = 0; start < trees.size(); start += TREE_CHUNK_SIZE) { //added by ikill240c
+            int end = Math.min(start + TREE_CHUNK_SIZE, trees.size()); //added by ikill240c
+            StringBuilder info = new StringBuilder("T ");
+            for (int[] pos : trees.subList(start, end)) { //added by ikill240c
+                info.append(pos[0]).append(' ').append(pos[1]).append(' ');
+            }
+            info.append('\n');
+            Network.getMatchmakingClient().getInterface().updateSpectatorInfo(-10000, info.toString());
+        } //added by ikill240c
         sentTrees = true;
     }
 
+    // Same size problem as sendTrees(), but this runs every tick with every unit and building of every player,
+    // so a long game with enough units hits the same crash. Split into several messages at whole-player
+    // boundaries (never inside one player's "P i ..." section); each message repeats the tick number and is
+    // complete on its own. //added by ikill240c
+    private static final int SPECTATOR_INFO_MAX_CHARS = 20000; //added by ikill240c - well under both limits
+
     private void sendSpectatorInfo() {
         int tick = getTick();
-        StringBuilder info = new StringBuilder().append(tick).append(' ');
+        String tick_prefix = tick + " "; //added by ikill240c
+        StringBuilder info = new StringBuilder(tick_prefix); //added by ikill240c
         Player[] players = local_player.getWorld().getPlayers();
         for (int i = 0; i < players.length; i++) {
-            info.append("P ").append(i).append(' ');
+            StringBuilder section = new StringBuilder().append("P ").append(i).append(' '); //added by ikill240c
             for (var s : players[i].getUnits().getSet()) {
                 if (s instanceof Unit u) {
-                    info.append("U ").append(u.getGridX()).append(' ').append(u.getGridY()).append(' ');
+                    section.append("U ").append(u.getGridX()).append(' ').append(u.getGridY()).append(' '); //added by ikill240c
                 } else if (s instanceof Building b) {
-                    info.append("B ").append(b.getGridX()).append(' ').append(b.getGridY()).append(' ').append(
+                    section.append("B ").append(b.getGridX()).append(' ').append(b.getGridY()).append(' ').append( //added by ikill240c
                             b.getTemplate().getPlacingSize()).append(' ').append(b.getHitPoints()).append(' ');
                 }
             }
+            // Send what we have first if adding this player would go over the limit - but only if the message
+            // already holds at least one player, so a single player's section is never split. //added by ikill240c
+            if (info.length() > tick_prefix.length() && info.length() + section.length() > SPECTATOR_INFO_MAX_CHARS) { //added by ikill240c
+                info.append('\n'); //added by ikill240c
+                Network.getMatchmakingClient().getInterface().updateSpectatorInfo(tick, info.toString()); //added by ikill240c
+                info = new StringBuilder(tick_prefix); //added by ikill240c
+            } //added by ikill240c
+            info.append(section); //added by ikill240c
         }
         info.append('\n');
         Network.getMatchmakingClient().getInterface().updateSpectatorInfo(tick, info.toString());

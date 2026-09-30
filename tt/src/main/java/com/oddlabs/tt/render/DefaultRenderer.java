@@ -266,7 +266,7 @@ public final class DefaultRenderer implements UIRenderer, AutoCloseable {
 
         sprite_sorter.distributeModels();
 
-        if (Globals.process_shadows) {
+        if (Globals.processShadows()) {
             render_queues.renderShadows(context, landscape_renderer, modelViewStack, projectionStack);
         }
 

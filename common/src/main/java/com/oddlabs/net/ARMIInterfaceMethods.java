@@ -39,7 +39,10 @@ public final class ARMIInterfaceMethods {
         } catch (IllegalAccessException | IllegalArgumentException e) {
             throw new IllegalARMIEventException(e);
         } catch (InvocationTargetException e) {
-            throw new IllegalARMIEventException(e);
+            // The call itself was valid; the invoked method threw. Reported as its own subtype (with the real
+            // exception unwrapped as the cause) so callers can tell a handler bug apart from malformed network
+            // data - see ARMIHandlerException. //added by ikill240c
+            throw new ARMIHandlerException(e.getCause() != null ? e.getCause() : e); //added by ikill240c
         }
     }
 

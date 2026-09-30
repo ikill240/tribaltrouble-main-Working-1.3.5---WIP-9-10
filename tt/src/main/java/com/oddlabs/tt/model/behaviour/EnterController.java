@@ -81,6 +81,12 @@ public final class EnterController extends Controller {
                     }
                 }
                 building.getUnitContainer().enter(unit);
+            } else if (unit.getOwner().usesReferenceCommandRules()) { //added by ikill240c
+                // Expert/Ultra/Fable units: the reference rule - can't get in, give up. Those AIs were written
+                // against it and manage their own garrisons; the eject-and-redirect handling below moved their
+                // units into towers they never chose (or out of ones they did), leaving units idle and the AI's
+                // bookkeeping out of step. See Player.usesReferenceCommandRules(). //added by ikill240c
+                unit.popController(); //added by ikill240c
             } else if (building.getUnitContainer() instanceof MountUnitContainer mount_container //added by ikill240c
                     && mount_container.isSupplyFull() //added by ikill240c
                     && unit.getAbilities().hasAbilities(Abilities.THROW)) { //added by ikill240c
@@ -105,7 +111,9 @@ public final class EnterController extends Controller {
                 // deliberately-placed occupant is never downgraded once, whether that check happens
                 // seconds or minutes after it was placed. //added by ikill240c
                 Unit mounted = mount_container.getUnit(); //added by ikill240c
-                boolean arriving_is_stronger = mounted != null //added by ikill240c
+                // Never eject a unit that belongs to an Expert/Ultra/Fable player - that AI placed it there and
+                // doesn't expect anyone else to remove it (the arriving unit is redirected instead). //added by ikill240c
+                boolean arriving_is_stronger = mounted != null && !mounted.getOwner().usesReferenceCommandRules() //added by ikill240c
                         && unit.getTemplate().getMaxHitPoints() > mounted.getTemplate().getMaxHitPoints(); //added by ikill240c
                 if (arriving_is_stronger) { //added by ikill240c
                     mount_container.exit(); //added by ikill240c

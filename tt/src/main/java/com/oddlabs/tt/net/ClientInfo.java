@@ -64,4 +64,19 @@ public final class ClientInfo implements GameServerInterface, ConnectionInterfac
     public void chat(String chat) {
         server.chat(player_slot, chat);
     }
+
+    @Override //added by ikill240c
+    public void requestCustomMap() { //added by ikill240c
+        server.requestCustomMap(player_slot); //added by ikill240c
+    } //added by ikill240c
+
+    @Override //added by ikill240c
+    public void customMapReady() { //added by ikill240c
+        server.customMapReady(player_slot); //added by ikill240c
+    } //added by ikill240c
+
+    @Override //added by ikill240c
+    public void customMapChunkReceived() { //added by ikill240c
+        server.customMapChunkReceived(player_slot); //added by ikill240c
+    } //added by ikill240c
 }

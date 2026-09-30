@@ -19,11 +19,25 @@ public final class PlayerSlot implements Serializable {
     public static final int AI_BATTLE_TUTORIAL = 6;
     public static final int AI_PASSIVE_CAMPAIGN = 7;
     public static final int AI_NEUTRAL_CAMPAIGN = 8;
-    // 9 is the next free value - AI_TOWER_TUTORIAL through AI_NEUTRAL_CAMPAIGN above already
-    // occupy 4-8, and these ints are transmitted over the network for lobby sync, so this can't
-    // reuse or renumber an existing value without breaking compatibility with anything that
-    // already expects the old numbering. //added by ikill240c
-    public static final int AI_INSANE = 9; //added by ikill240c
+    public static final int AI_EXPERT = 9;
+    public static final int AI_ULTRA = 10;
+    public static final int AI_FABLE = 11;
+
+    /** The AI difficulties offered in lobby menus, in the order the menus list them. */
+    private static final int[] MENU_DIFFICULTIES = {AI_EASY, AI_NORMAL, AI_HARD, AI_EXPERT, AI_ULTRA, AI_FABLE};
+
+    /** The AI difficulty at a position (from 0) among the AI entries of a lobby menu. */
+    public static int difficultyOfMenuEntry(int entry) {
+        return MENU_DIFFICULTIES[Math.clamp(entry, 0, MENU_DIFFICULTIES.length - 1)];
+    }
+
+    /** The position (from 0) of an AI difficulty among the AI entries of a lobby menu. */
+    public static int menuEntryOfDifficulty(int difficulty) {
+        for (int i = 0; i < MENU_DIFFICULTIES.length; i++)
+            if (MENU_DIFFICULTIES[i] == difficulty)
+                return i;
+        return 0;
+    }
 
     public static final int OPEN = 1;
     public static final int CLOSED = 2;
@@ -67,9 +81,10 @@ public final class PlayerSlot implements Serializable {
         this.ready = ready;
     }
 
-    // Made public - WorldViewer (a different package) needs each retained slot's ORIGINAL index to
-    // assign the correct color after WorldStarter/ReplayWorldStarter compact out closed slots. Compacting
-    // filters the array but keeps the same PlayerSlot objects, so this value survives correctly.
+    // Public: WorldViewer.java (a different package, com.oddlabs.tt.viewer) calls this directly to
+    // build the player_colors array. The reference project's own WorldViewer builds colors through
+    // different (spectator-related) plumbing that was deliberately excluded from this integration,
+    // so its PlayerSlot didn't need this public - but this project's WorldViewer does.
     // //added by ikill240c
     public int getSlot() {
         return slot;

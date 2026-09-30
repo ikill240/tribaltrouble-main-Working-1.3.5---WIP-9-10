@@ -341,6 +341,17 @@ public class Unit extends Selectable<UnitTemplate> implements Occupant, Movable 
     // specifically (gathering's own recovery, being cheaper/safer, still fires at the original,
     // shorter GATHER_STUCK_SECONDS via the same accumulated stuck_time). //added by ikill240c
     private void updateStuckCheck(float t) {//added by ikill240c
+        // The Expert, Ultra and Fable AIs were written against the reference project, which has no stuck
+        // handling at all - they manage their own units. Cancelling their orders here left those units idle:
+        // a big army queuing through a gap moves less than GATHER_STUCK_DIST_SQ in GENERAL_STUCK_SECONDS and
+        // looks exactly like "stuck", and the AI still believed the units were on their way, so they stood
+        // around until something attacked them. (The gather branch also reassigned their peons to other
+        // resources behind the AI's back.) Humans and AdvancedAI keep this check. //added by ikill240c
+        if (getOwner().usesReferenceCommandRules()) { //added by ikill240c
+            stuck_time = 0f; //added by ikill240c
+            stuck_check_x = Float.NaN; //added by ikill240c
+            return; //added by ikill240c
+        } //added by ikill240c
         if (!(isMoving() && getPrimaryController() != null)) {
             stuck_time = 0f;
             stuck_check_x = Float.NaN;

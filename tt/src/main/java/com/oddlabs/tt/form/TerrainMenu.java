@@ -19,6 +19,7 @@ import com.oddlabs.tt.global.Settings;
 import com.oddlabs.tt.gui.CancelButton;
 import com.oddlabs.tt.gui.CheckBox;
 import com.oddlabs.tt.gui.EditLine;
+import com.oddlabs.tt.gui.Form; //added by ikill240c
 import com.oddlabs.tt.gui.GUIObject;
 import com.oddlabs.tt.gui.GUIRoot;
 import com.oddlabs.tt.gui.Group;
@@ -83,6 +84,10 @@ public final class TerrainMenu extends Group {
 
     private static final int SLIDER_LENGTH = 250;
     private static final int BUTTON_WIDTH = 100;
+    // Visible height of the scrolling player roster (the reference project's value). //added by ikill240c
+    private static final int ROSTER_CONTENT_HEIGHT = 200; //added by ikill240c
+    // The multiplayer roster never shrinks below roughly two player rows. //added by ikill240c
+    private static final int MIN_ROSTER_CONTENT_HEIGHT = 80; //added by ikill240c
     private static final int SLIDER_MAX_VALUE = 10;
     // Map settings (hills/vegetation/supplies) can now go up to an extra 100% beyond the original
     // cap - value 20 means 200%, since the normalization divisor below stays at SLIDER_MAX_VALUE=10
@@ -160,7 +165,7 @@ public final class TerrainMenu extends Group {
     // not a valid code to begin with), but map codes with no Insane slot round-trip identically
     // either way since their actual difficulty digit values (0-3) haven't changed, only the
     // modulus used to size the field around them. //added by ikill240c
-    private static final int DIFFICULTY_CARDINALITY = 5; //added by ikill240c
+    private static final int DIFFICULTY_CARDINALITY = 7; // raised from 5 to 7: Insane's single slot is now Expert/Ultra/Fable's three (see the pulldown construction and difficultyIndexToFill()/fillToDifficultyIndex() below) //added by ikill240c
     private static final int RACE_CARDINALITY = 2;
     private static final int TEAM_CARDINALITY = 6;
     private static final @NonNull BigInteger MAX_VALUE;
@@ -372,6 +377,8 @@ public final class TerrainMenu extends Group {
         // what its extra tab/box chrome left room for on-screen - not something wrong with how
         // that chrome itself was sized. //added by ikill240c
         Panel economy_options = new Panel(i18n("economy_options")); //added by ikill240c
+        // Multiplayer only: Max buildings + Starting Units, shown in the Advanced... pop-up. //added by ikill240c
+        Panel units_options = new Panel(i18n("units_options")); //added by ikill240c
         roster_panel = multiplayer ? new RosterPanel() : null;
         Group group_map_options = new Group();
 
@@ -539,7 +546,10 @@ public final class TerrainMenu extends Group {
         label_starting_rubber_warriors_value.place(slider_starting_rubber_warriors, RIGHT_MID); //added by ikill240c
 
         group_starting_warriors.compileCanvas(); //added by ikill240c
-        group_map_options.addChild(group_starting_warriors); //added by ikill240c
+        if (multiplayer) //added by ikill240c
+            units_options.addChild(group_starting_warriors); //added by ikill240c
+        else //added by ikill240c
+            group_map_options.addChild(group_starting_warriors); //added by ikill240c
 
         // Max buildings per player - pulldown with options 20, 50, 100, 500, 1200, Unlimited(9999).
         // //added by ikill240 2026-09-09 21:18
@@ -559,7 +569,10 @@ public final class TerrainMenu extends Group {
         label_max_buildings.place(); //added by ikill240 2026-09-09 21:18
         pb_max_buildings.place(label_max_buildings, RIGHT_MID); //added by ikill240 2026-09-09 21:18
         group_max_buildings.compileCanvas(); //added by ikill240 2026-09-09 21:18
-        group_map_options.addChild(group_max_buildings); //added by ikill240 2026-09-09 21:18
+        if (multiplayer) //added by ikill240c
+            units_options.addChild(group_max_buildings); //added by ikill240c
+        else //added by ikill240c
+            group_map_options.addChild(group_max_buildings); //added by ikill240 2026-09-09 21:18
 
         // Configurable AdvancedAI tuning pulldowns, grouped on the Advanced options tab. //added by ikill240c 2026-09-09 23:10
         Group group_chief_heal_idle = new Group(); //added by ikill240c 2026-09-09 23:10
@@ -778,7 +791,9 @@ public final class TerrainMenu extends Group {
         pm_set_all_difficulty.addItem(new PulldownItem<>(i18n("easy_ai"), RosterTemplate.Fill.EASY_AI)); //added by ikill240c
         pm_set_all_difficulty.addItem(new PulldownItem<>(i18n("normal_ai"), RosterTemplate.Fill.NORMAL_AI)); //added by ikill240c
         pm_set_all_difficulty.addItem(new PulldownItem<>(i18n("hard_ai"), RosterTemplate.Fill.HARD_AI)); //added by ikill240c
-        pm_set_all_difficulty.addItem(new PulldownItem<>(i18n("insane_ai"), RosterTemplate.Fill.INSANE_AI)); //added by ikill240c
+        pm_set_all_difficulty.addItem(new PulldownItem<>(i18n("expert_ai"), RosterTemplate.Fill.EXPERT_AI)); //added by ikill240c
+        pm_set_all_difficulty.addItem(new PulldownItem<>(i18n("ultra_ai"), RosterTemplate.Fill.ULTRA_AI)); //added by ikill240c
+        pm_set_all_difficulty.addItem(new PulldownItem<>(i18n("fable_ai"), RosterTemplate.Fill.FABLE_AI)); //added by ikill240c
         // Listener itself is registered further down, AFTER difficulty_pulldown_menus is actually
         // assigned (buildPlayerSlots() does that) - it's a blank final field, and the compiler
         // rejects any reference to one, even from inside a lambda that won't actually run until
@@ -1148,16 +1163,14 @@ public final class TerrainMenu extends Group {
         race_pulldown_buttons = new PulldownButton[MatchmakingServerInterface.MAX_PLAYERS];
         team_pulldown_buttons = new PulldownButton[MatchmakingServerInterface.MAX_PLAYERS];
         if (multiplayer) { //added by ikill240c
-            // Bulk-apply roster controls (Adaptive AI, Set All AI To, Free For All, Team Together)
-            // go on THIS tab for multiplayer, not the standard tab - see RosterPanel.setHeader()'s
-            // own comment for why (this tab already scrolls internally instead of growing the whole
-            // dialog, which is exactly what was pushing the OK/confirm button outside the visible
-            // window). Placed and added here, BEFORE buildPlayerSlots() runs for the first time,
-            // so setHeader() is already in effect the first time setRoster() places the roster
-            // relative to it. The three checkboxes sit side by side in one row (per explicit
-            // request, was stacked vertically); the difficulty pulldown goes on its own row below
-            // them, since it isn't a checkbox and is wide enough that fitting it into the same row
-            // would crowd the whole thing. //added by ikill240c
+            // Multiplayer: the bulk-apply roster controls (Adaptive AI, Free For All, Team Together,
+            // Set All AI To) go at the top of the Roster tab, directly above the Player 1 row, not on
+            // the Standard tab. SelectGameMenu embeds this whole dialog in the lobby's Game tab without
+            // resizing the lobby around it, so every tab has to stay within the reference project's
+            // size - an over-tall Standard tab pushes the dialog out of the lobby frame and its tab rows
+            // off screen. buildPlayerSlots() shrinks the roster's scroll area by this header's height so
+            // the Roster tab doesn't grow either. Placed before the first buildPlayerSlots() call so
+            // setHeader() is in effect the first time setRoster() positions the roster below it. //added by ikill240c
             cb_adaptive_ai_enabled.place(); //added by ikill240c
             cb_free_for_all.place(cb_adaptive_ai_enabled, RIGHT_MID, //added by ikill240c
                     Skin.getSkin().getFormData().objectSpacing()); //added by ikill240c
@@ -1236,6 +1249,14 @@ public final class TerrainMenu extends Group {
         button_mapcode.addMouseClickListener(new MapcodeListener()); //added by ikill240c
         HorizButton button_custom_map = new HorizButton(i18n("load_custom_map"), 170); //added by ikill240c
         button_custom_map.addMouseClickListener(new CustomMapListener()); //added by ikill240c
+        // Multiplayer only: the reference project's "Advanced..." button (top-right of the dialog),
+        // opening a pop-up with this project's extra settings - see ExtraSettingsForm. //added by ikill240c
+        final HorizButton button_advanced = multiplayer ? new HorizButton(i18n("advanced"), 130) : null; //added by ikill240c
+        if (button_advanced != null) { //added by ikill240c
+            button_advanced.addMouseClickListener((_, _, _, _) -> gui_root.addModalForm(new ExtraSettingsForm( //added by ikill240c
+                    i18n("advanced_settings_caption"), units_options, custom_options, economy_options))); //added by ikill240c
+            addChild(button_advanced); //added by ikill240c
+        } //added by ikill240c
 
         group_buttons.addChild(button_ok);
         group_buttons.addChild(button_cancel);
@@ -1244,8 +1265,17 @@ public final class TerrainMenu extends Group {
 
         button_cancel.place();
         button_ok.place(button_cancel, LEFT_MID);
-        button_mapcode.place(button_cancel, TOP_RIGHT); //added by ikill240c - directly above button_cancel, right-aligned with it, rather than further left of button_ok
-        button_custom_map.place(button_mapcode, LEFT_MID); //added by ikill240c
+        if (multiplayer) { //added by ikill240c
+            // One row, like the reference: [Load Custom Map...] [Enter map code...] [OK] [Cancel]. The
+            // dialog is lobby-width here so all four fit, and a second row would make it taller than
+            // the lobby frame has room for. //added by ikill240c
+            button_mapcode.place(button_ok, LEFT_MID); //added by ikill240c
+            button_custom_map.place(button_mapcode, LEFT_MID); //added by ikill240c
+        } else { //added by ikill240c
+            // Singleplayer: map buttons stacked above OK/Cancel (a single row is too wide here). //added by ikill240c
+            button_mapcode.place(button_cancel, TOP_RIGHT); //added by ikill240c
+            button_custom_map.place(button_mapcode, LEFT_MID); //added by ikill240c
+        } //added by ikill240c
 
         group_buttons.compileCanvas();
         addChild(group_buttons);
@@ -1259,15 +1289,20 @@ public final class TerrainMenu extends Group {
         }
         group_terrain_type.place(group_size, BOTTOM_RIGHT);
         // Chieftain limit pulldowns moved to the Advanced tab. //added by ikill240c 2026-09-09 23:10
-        // Max buildings placed directly under terrain type now - was chained after
-        // group_initial_units/group_max_units, which no longer exist as standalone groups here
-        // (both got folded into group_starting_warriors above, alongside the warrior-tier rows).
-        // //added by ikill240c
-        group_max_buildings.place(group_terrain_type, BOTTOM_RIGHT); //added by ikill240c
-        // Was never placed at all - compileCanvas() (a few lines down) iterates every child of
-        // group_map_options and requires each one to already be placed, which is exactly what threw
-        // "Group compiled before being placed" here. //added by ikill240c
-        group_starting_warriors.place(group_max_buildings, BOTTOM_RIGHT); //added by ikill240c
+        if (multiplayer) { //added by ikill240c
+            // Multiplayer: these live on the "Units & buildings" tab of the Advanced... pop-up (see
+            // button_advanced), keeping the Standard tab the same size as the reference project's. //added by ikill240c
+            group_max_buildings.place(); //added by ikill240c
+            group_starting_warriors.place(group_max_buildings, BOTTOM_LEFT, //added by ikill240c
+                    Skin.getSkin().getFormData().sectionSpacing()); //added by ikill240c
+            units_options.compileCanvas(); //added by ikill240c
+        } else { //added by ikill240c
+            // Max buildings directly under terrain type; Starting Units (initial/max units and the
+            // warrior tiers) below it. Both must be placed before group_map_options.compileCanvas(),
+            // which throws "Group compiled before being placed" otherwise. //added by ikill240c
+            group_max_buildings.place(group_terrain_type, BOTTOM_RIGHT); //added by ikill240c
+            group_starting_warriors.place(group_max_buildings, BOTTOM_RIGHT); //added by ikill240c
+        } //added by ikill240c
         group_map_options.compileCanvas();
         standard.addChild(group_map_options);
 
@@ -1280,36 +1315,22 @@ public final class TerrainMenu extends Group {
                 label_default_name.place(label_name, RIGHT_MID);
             cb_rated.place(label_name, BOTTOM_LEFT, Skin.getSkin().getFormData().sectionSpacing());
             group_map_options.place(cb_rated, BOTTOM_LEFT);
-            // cb_adaptive_ai_enabled/group_set_all_difficulty/cb_free_for_all are NOT placed here
-            // for multiplayer anymore - they moved to roster_panel (its own tab) instead, placed
-            // and added there before buildPlayerSlots() ever runs. See RosterPanel.setHeader()'s
-            // own comment for why: this tab's own vertical stack of controls, once those three
-            // were piled on top of everything already here, was tall enough to push this dialog's
-            // total height past the visible window - which meant the AT_END-anchored OK/confirm
-            // button ended up positioned outside the visible area entirely. //added by ikill240c
         } else {
             group_map_options.place();
-            // Placed between group_map_options and the roster itself, i.e. directly above the
-            // "Player 1" row - was on ModeAndPresetsPanel, then briefly inline in a different spot;
-            // this is where it actually belongs per explicit request. The three checkboxes sit side
-            // by side in one row (per explicit request, was stacked vertically); the difficulty
-            // pulldown goes on its own row below them, since it isn't a checkbox and is wide enough
-            // that fitting it into the same row would crowd the whole thing. //added by ikill240c
+            // Singleplayer: the bulk-apply roster controls sit on this tab, directly above the
+            // "Player 1" row. The three checkboxes share one row; the difficulty pulldown gets its own
+            // row below them because it's too wide to fit alongside. Multiplayer puts these on the
+            // Roster tab instead (see the setHeader() block above). //added by ikill240c
             cb_adaptive_ai_enabled.place(group_map_options, BOTTOM_LEFT, //added by ikill240c
                     Skin.getSkin().getFormData().sectionSpacing()); //added by ikill240c
             cb_free_for_all.place(cb_adaptive_ai_enabled, RIGHT_MID, //added by ikill240c
                     Skin.getSkin().getFormData().objectSpacing()); //added by ikill240c
             cb_team_together.place(cb_free_for_all, RIGHT_MID, //added by ikill240c
                     Skin.getSkin().getFormData().objectSpacing()); //added by ikill240c
-            // Directly below the checkbox row - a host setting every AI slot's difficulty at once,
-            // right where they're about to look at those same slots individually if they want to
-            // override any of them afterward. //added by ikill240c
             group_set_all_difficulty.place(cb_adaptive_ai_enabled, BOTTOM_LEFT, //added by ikill240c
                     Skin.getSkin().getFormData().sectionSpacing()); //added by ikill240c
-            group_race_team.place(group_set_all_difficulty, BOTTOM_LEFT, Skin.getSkin().getFormData().sectionSpacing()); //added by ikill240c
-            // Only added to the standard tab for singleplayer now - see the multiplayer branch's
-            // own comment above for why multiplayer's copies live on roster_panel instead.
-            // //added by ikill240c
+            group_race_team.place(group_set_all_difficulty, BOTTOM_LEFT, //added by ikill240c
+                    Skin.getSkin().getFormData().sectionSpacing()); //added by ikill240c
             standard.addChild(cb_adaptive_ai_enabled); //added by ikill240c
             standard.addChild(group_set_all_difficulty); //added by ikill240c
             standard.addChild(cb_free_for_all); //added by ikill240c
@@ -1385,8 +1406,10 @@ public final class TerrainMenu extends Group {
         // the layout even though it's now always constructed above. roster_panel (shows other network
         // players) correctly stays multiplayer-only; mode_and_presets does not need to.
         // //added by ikill240c
-        PanelGroup panel_group = multiplayer ? new PanelGroup(1, mode_and_presets, standard, advanced,
-                custom_options, economy_options, roster_panel) : new PanelGroup(1, mode_and_presets, standard, //added by ikill240c
+        // Multiplayer uses exactly the reference project's four tabs; this project's extra settings
+        // are in the Advanced... pop-up instead, so the dialog fits inside the lobby frame. //added by ikill240c
+        PanelGroup panel_group = multiplayer ? new PanelGroup(1, mode_and_presets, standard, advanced, //added by ikill240c
+                roster_panel) : new PanelGroup(1, mode_and_presets, standard, //added by ikill240c
                 advanced, custom_options, economy_options); //added by ikill240c
         addChild(panel_group);
         var playersChangedListener = new PulldownUpdatePlayersChangedListener(standard);
@@ -1396,6 +1419,8 @@ public final class TerrainMenu extends Group {
         // Place objects
         label_headline.place();
         panel_group.place(label_headline, BOTTOM_LEFT);
+        if (button_advanced != null) //added by ikill240c
+            button_advanced.place(panel_group, TOP_RIGHT); //added by ikill240c
 
         // buttons
         group_buttons.place(Origin.AT_END);
@@ -1650,7 +1675,17 @@ public final class TerrainMenu extends Group {
 
     @SuppressWarnings("unchecked")
     private ScrollableGroup buildPlayerSlots(int count) {
-        ScrollableGroup inner = new ScrollableGroup(200, 64);
+        // Was a fixed 200. In multiplayer the Roster tab also holds the bulk-apply header above the
+        // roster (see the setHeader() block in the constructor), so the scroll area gives up exactly that
+        // header's height - the list still scrolls, and the tab stays the reference project's size. //added by ikill240c
+        int roster_height = ROSTER_CONTENT_HEIGHT; //added by ikill240c
+        if (multiplayer) { //added by ikill240c
+            int spacing = Skin.getSkin().getFormData().sectionSpacing(); //added by ikill240c
+            roster_height -= cb_adaptive_ai_enabled.getHeight() + spacing + group_set_all_difficulty.getHeight() //added by ikill240c
+                    + spacing; //added by ikill240c
+            roster_height = Math.max(roster_height, MIN_ROSTER_CONTENT_HEIGHT); //added by ikill240c
+        } //added by ikill240c
+        ScrollableGroup inner = new ScrollableGroup(roster_height, 64); //added by ikill240c
         Random random = new Random(
                 LocalEventQueue.getQueue().getHighPrecisionManager().getTick() * (long) LocalEventQueue.getQueue().getHighPrecisionManager().getTick());
         random.nextFloat();
@@ -1671,7 +1706,9 @@ public final class TerrainMenu extends Group {
                 difficulty_pulldown_menus[i].addItem(new PulldownItem<>(i18n("easy_ai")));
                 difficulty_pulldown_menus[i].addItem(new PulldownItem<>(i18n("normal_ai")));
                 difficulty_pulldown_menus[i].addItem(new PulldownItem<>(i18n("hard_ai")));
-                difficulty_pulldown_menus[i].addItem(new PulldownItem<>(i18n("insane_ai"))); //added by ikill240c - was commented out; now that PlayerSlot.AI_INSANE/RosterTemplate.Fill.INSANE_AI/PlayerTypes.AIInsane/AdvancedAI.DIFFICULTY_INSANE all exist and difficultyIndexToFill()/fillToDifficultyIndex() both handle index 4(SP)/5(MP), this item has somewhere to actually resolve to
+                difficulty_pulldown_menus[i].addItem(new PulldownItem<>(i18n("expert_ai"))); //added by ikill240c
+                difficulty_pulldown_menus[i].addItem(new PulldownItem<>(i18n("ultra_ai"))); //added by ikill240c
+                difficulty_pulldown_menus[i].addItem(new PulldownItem<>(i18n("fable_ai"))); //added by ikill240c
             }
 
             difficulty_pulldown_buttons[i] = new PulldownButton<>(gui_root, difficulty_pulldown_menus[i], 0, 115);
@@ -1930,7 +1967,11 @@ public final class TerrainMenu extends Group {
                 Renderer.getRenderer().toggleFullscreen(); //added by ikill240c
             } //added by ikill240c
 
-            String path = TinyFileDialogs.tinyfd_openFileDialog(i18n("dialog_load_custom_map"), "", null, //added by ikill240c
+            // Opens in <game folder>/maps - the folder every player's game looks in for a multiplayer custom map, so
+            // hosts keep their maps where they'll share them from. Any other folder still works for the host. //added by ikill240c
+            java.io.File maps_dir = com.oddlabs.tt.resource.CustomMapGenerator.sharedMapsDir().toFile(); //added by ikill240c
+            maps_dir.mkdirs(); //added by ikill240c
+            String path = TinyFileDialogs.tinyfd_openFileDialog(i18n("dialog_load_custom_map"), maps_dir.getAbsolutePath() + java.io.File.separator, null, //added by ikill240c //added by ikill240c
                     i18n("ttmap_files"), false); //added by ikill240c
             if (path != null) { //added by ikill240c
                 try { //added by ikill240c
@@ -2653,7 +2694,9 @@ public final class TerrainMenu extends Group {
                 case 2 -> RosterTemplate.Fill.EASY_AI; //added by ikill240c
                 case 3 -> RosterTemplate.Fill.NORMAL_AI; //added by ikill240c
                 case 4 -> RosterTemplate.Fill.HARD_AI; //added by ikill240c
-                case 5 -> RosterTemplate.Fill.INSANE_AI; //added by ikill240c
+                case 5 -> RosterTemplate.Fill.EXPERT_AI; //added by ikill240c
+                case 6 -> RosterTemplate.Fill.ULTRA_AI; //added by ikill240c
+                case 7 -> RosterTemplate.Fill.FABLE_AI; //added by ikill240c
                 default -> RosterTemplate.Fill.OPEN; //added by ikill240c
             }; //added by ikill240c
         } //added by ikill240c
@@ -2661,7 +2704,9 @@ public final class TerrainMenu extends Group {
             case 1 -> RosterTemplate.Fill.EASY_AI; //added by ikill240c
             case 2 -> RosterTemplate.Fill.NORMAL_AI; //added by ikill240c
             case 3 -> RosterTemplate.Fill.HARD_AI; //added by ikill240c
-            case 4 -> RosterTemplate.Fill.INSANE_AI; //added by ikill240c
+            case 4 -> RosterTemplate.Fill.EXPERT_AI; //added by ikill240c
+            case 5 -> RosterTemplate.Fill.ULTRA_AI; //added by ikill240c
+            case 6 -> RosterTemplate.Fill.FABLE_AI; //added by ikill240c
             default -> RosterTemplate.Fill.CLOSED; // SP index 0 - see the construction loop, SP has no Open item at all //added by ikill240c
         }; //added by ikill240c
     }
@@ -2678,7 +2723,9 @@ public final class TerrainMenu extends Group {
             case EASY_AI -> PlayerSlot.AI_EASY; //added by ikill240c
             case NORMAL_AI -> PlayerSlot.AI_NORMAL; //added by ikill240c
             case HARD_AI -> PlayerSlot.AI_HARD; //added by ikill240c
-            case INSANE_AI -> PlayerSlot.AI_INSANE; //added by ikill240c
+            case EXPERT_AI -> PlayerSlot.AI_EXPERT; //added by ikill240c
+            case ULTRA_AI -> PlayerSlot.AI_ULTRA; //added by ikill240c
+            case FABLE_AI -> PlayerSlot.AI_FABLE; //added by ikill240c
             case HOST, OPEN, CLOSED -> PlayerSlot.AI_NONE; // shouldn't be reached - see method comment //added by ikill240c
         }; //added by ikill240c
     } //added by ikill240c
@@ -2731,7 +2778,9 @@ public final class TerrainMenu extends Group {
                 case EASY_AI -> 2;
                 case NORMAL_AI -> 3;
                 case HARD_AI -> 4;
-                case INSANE_AI -> 5; //added by ikill240c
+                case EXPERT_AI -> 5; //added by ikill240c
+                case ULTRA_AI -> 6; //added by ikill240c
+                case FABLE_AI -> 7; //added by ikill240c
             };
         }
         return switch (fill) {
@@ -2739,9 +2788,36 @@ public final class TerrainMenu extends Group {
             case EASY_AI -> 1;
             case NORMAL_AI -> 2;
             case HARD_AI -> 3;
-            case INSANE_AI -> 4; //added by ikill240c
+            case EXPERT_AI -> 4; //added by ikill240c
+            case ULTRA_AI -> 5; //added by ikill240c
+            case FABLE_AI -> 6; //added by ikill240c
         };
     }
+
+    // Pop-up opened by the multiplayer "Advanced..." button - the same place the reference project puts
+    // its extra game settings. Holds this project's additional multiplayer settings as tabs (Units &
+    // buildings, Custom options, Economy & AI), which don't fit in the create-game dialog itself: that
+    // dialog is embedded in the lobby's Game tab and has to stay within the lobby frame.
+    // A new form is built on every click because GUIRoot.addModalForm() attaches a close listener to the
+    // form each time it's shown and nothing ever removes it, so reusing one instance would re-run stale
+    // close listeners. The tab panels are the same persistent objects every time (moved into the new
+    // form's PanelGroup, the same way SelectGameMenu.setPanel() re-hosts its panels), so everything the
+    // host sets survives closing and reopening, and TerrainMenu reads those values exactly as before.
+    // //added by ikill240c
+    private static final class ExtraSettingsForm extends Form { //added by ikill240c
+        ExtraSettingsForm(@NonNull String caption, @NonNull Panel @NonNull... panels) { //added by ikill240c
+            super(caption); //added by ikill240c
+            PanelGroup group = new PanelGroup(panels); //added by ikill240c
+            addChild(group); //added by ikill240c
+            HorizButton button_close = new OKButton(BUTTON_WIDTH); //added by ikill240c
+            button_close.addMouseClickListener((_, _, _, _) -> cancel()); //added by ikill240c
+            addChild(button_close); //added by ikill240c
+            group.place(); //added by ikill240c
+            button_close.place(group, BOTTOM_RIGHT); //added by ikill240c
+            compileCanvas(); //added by ikill240c
+            centerPos(); //added by ikill240c
+        } //added by ikill240c
+    } //added by ikill240c
 
     private final class PulldownUpdatePlayersChangedListener implements ItemChosenListener<Void> {
         private final Panel standard;

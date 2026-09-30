@@ -32,6 +32,12 @@ public class BuildProductionContainer extends BuildSupplyContainer {
             super.orderSupply(amount);
     }
 
+    // Needed by the ultra AI package (Orders.java) to check whether a production queue is set to
+    // infinite before deciding whether to top it up. //added by ikill240c
+    public final boolean isInfinite() { //added by ikill240c
+        return infinite; //added by ikill240c
+    } //added by ikill240c
+
     public final boolean hasEnoughSupplies() {
         for (int i = 0; i < cost.getSupplyTypes().length; i++) {
             if (building.getSupplyContainer(cost.getSupplyTypes()[i]).getNumSupplies() < cost.getSupplyAmounts()[i]) {

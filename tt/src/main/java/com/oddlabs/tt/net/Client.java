@@ -16,12 +16,14 @@ import com.oddlabs.tt.gui.GUI;
 import com.oddlabs.tt.landscape.WorldParameters;
 import com.oddlabs.tt.player.Player;
 import com.oddlabs.tt.player.UnitInfo;
+import com.oddlabs.tt.resource.CustomMapGenerator; //added by ikill240c
 import com.oddlabs.tt.resource.WorldGenerator;
 import com.oddlabs.tt.viewer.InGameInfo;
 import com.oddlabs.util.Utils;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 
+import java.io.ByteArrayOutputStream; //added by ikill240c
 import java.io.IOException;
 import java.net.InetSocketAddress;
 
@@ -45,6 +47,9 @@ public final class Client implements ARMIEventBroker, GameClientInterface, Conne
     private int session_id;
 
     private @Nullable WorldGenerator generator = null;
+    // Custom map download in progress (null when none) and the last progress step shown in the chat. //added by ikill240c
+    private @Nullable ByteArrayOutputStream custom_map_download; //added by ikill240c
+    private int custom_map_progress_shown; //added by ikill240c
 
     private PlayerSlot[] player_slots;
     private short player_slot = -1;
@@ -139,6 +144,17 @@ public final class Client implements ARMIEventBroker, GameClientInterface, Conne
         this.generator = generator;
         this.player_slot = player_slot;
         getConfigurationListener().connected(this, game, generator, player_slot, player_count);
+        // Custom map game: report that we already have the host's map, or ask the host to send it. //added by ikill240c
+        if (generator instanceof CustomMapGenerator map) { //added by ikill240c
+            if (map.hasLocalCopy()) { //added by ikill240c
+                gameserver_interface.customMapReady(); //added by ikill240c
+            } else { //added by ikill240c
+                custom_map_download = new ByteArrayOutputStream(); //added by ikill240c
+                custom_map_progress_shown = 0; //added by ikill240c
+                customMapNotice("Downloading the custom map \"" + map.getMapFileName() + "\" from the host..."); //added by ikill240c
+                gameserver_interface.requestCustomMap(); //added by ikill240c
+            } //added by ikill240c
+        } //added by ikill240c
     }
 
     @Override
@@ -201,4 +217,42 @@ public final class Client implements ARMIEventBroker, GameClientInterface, Conne
         getConfigurationListener().connectionLost();
         close();
     }
+
+    @Override //added by ikill240c
+    public void receiveCustomMapChunk(int total_bytes, byte @Nullable [] data) { //added by ikill240c
+        if (state != NEGOTIATING || custom_map_download == null || !(generator instanceof CustomMapGenerator map)) //added by ikill240c
+            return; //added by ikill240c
+        if (total_bytes < 0 || data == null) { //added by ikill240c
+            custom_map_download = null; //added by ikill240c
+            customMapNotice("The host couldn't send the custom map. Ask them for " + map.getMapFileName() //added by ikill240c
+                    + " and put it in " + CustomMapGenerator.sharedMapsDir() + ", then join again."); //added by ikill240c
+            return; //added by ikill240c
+        } //added by ikill240c
+        custom_map_download.write(data, 0, data.length); //added by ikill240c
+        int received = custom_map_download.size(); //added by ikill240c
+        int percent = total_bytes == 0 ? 100 : (int) (100L * received / total_bytes); //added by ikill240c
+        if (received < total_bytes) { //added by ikill240c
+            gameserver_interface.customMapChunkReceived(); //added by ikill240c - lets the host send the next piece
+            if (percent >= custom_map_progress_shown + 25) { //added by ikill240c
+                custom_map_progress_shown = percent - percent % 25; //added by ikill240c
+                customMapNotice("Downloading the custom map... " + custom_map_progress_shown + "%"); //added by ikill240c
+            } //added by ikill240c
+            return; //added by ikill240c
+        } //added by ikill240c
+        byte[] compressed = custom_map_download.toByteArray(); //added by ikill240c
+        custom_map_download = null; //added by ikill240c
+        try { //added by ikill240c
+            java.nio.file.Path saved = map.installDownloadedMap(compressed); //added by ikill240c
+            customMapNotice("Custom map received and saved to " + saved); //added by ikill240c
+            gameserver_interface.customMapReady(); //added by ikill240c
+        } catch (IOException | RuntimeException e) { //added by ikill240c
+            customMapNotice("Couldn't save the custom map: " + e.getMessage()); //added by ikill240c
+        } //added by ikill240c
+    } //added by ikill240c
+
+    @Override //added by ikill240c
+    public void customMapNotice(@Nullable String text) { //added by ikill240c
+        if (text != null) //added by ikill240c
+            Network.getChatHub().chat(new ChatMessage("Custom map", text, ChatMessage.Type.GAME_MENU)); //added by ikill240c
+    } //added by ikill240c
 }

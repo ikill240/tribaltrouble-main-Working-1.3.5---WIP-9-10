@@ -15,6 +15,7 @@ import com.oddlabs.tt.event.LocalEventQueue;
 import com.oddlabs.tt.global.Globals;
 import com.oddlabs.tt.model.RacesResources;
 import com.oddlabs.tt.player.PlayerInfo;
+import com.oddlabs.tt.resource.CustomMapGenerator; //added by ikill240c
 import com.oddlabs.tt.resource.WorldGenerator;
 import com.oddlabs.tt.util.Utils;
 import org.jspecify.annotations.NonNull;
@@ -214,6 +215,8 @@ public final class Server implements ConnectionListenerInterface {
     public void startServer(@NonNull PlayerSlot slot) {
         if (!canControlSlot(slot, 0) || getNumReady() != getNumClients())// || PlayerSlot.getNumTeams(players) < 2)
             return;
+        if (!allPlayersHaveCustomMap(slot)) //added by ikill240c
+            return; //added by ikill240c
         state = SYNCHRONIZING;
         unregisterGame();
         broadcastInits();
@@ -350,4 +353,93 @@ public final class Server implements ConnectionListenerInterface {
                 players.length);
         broadcastPlayers(true);
     }
+
+    // ---------------- custom map transfer ---------------- //added by ikill240c
+    // Every player needs the host's custom map file to build the same world. Players who don't have it get it from
+    // the host through the lobby connection: the host compresses the file once, then sends it in pieces of
+    // CUSTOM_MAP_CHUNK_BYTES, keeping at most CUSTOM_MAP_WINDOW pieces unacknowledged - the player confirms each
+    // piece (customMapChunkReceived) before another is sent. Each piece stays well under the 32KB per-message limit
+    // and the in-flight total under the 64KB connection buffer, so normal lobby messages keep flowing. Acknowledgement
+    // pacing (not writeBufferDrained) because internet lobbies run through the matchmaking tunnel, whose connection
+    // reports "drained" immediately from inside the send call - pacing on that would send the whole map at once.
+    // The host can't start the game until every player has reported an identical copy. //added by ikill240c
+    private static final int CUSTOM_MAP_CHUNK_BYTES = 28 * 1024; //added by ikill240c
+    private static final int CUSTOM_MAP_WINDOW = 2; //added by ikill240c
+    private byte @Nullable [] custom_map_data; //added by ikill240c - compressed map, built on the first request
+
+    void requestCustomMap(@NonNull PlayerSlot player_slot) { //added by ikill240c
+        ClientConnection client = locateClientForSlot(player_slot); //added by ikill240c
+        if (state != NEGOTIATING || client == null || client.has_custom_map || client.custom_map_offset >= 0 //added by ikill240c
+                || !(generator instanceof CustomMapGenerator map)) //added by ikill240c
+            return; //added by ikill240c
+        if (custom_map_data == null) { //added by ikill240c
+            try { //added by ikill240c
+                custom_map_data = map.readCompressed(); //added by ikill240c
+            } catch (IOException | RuntimeException e) { //added by ikill240c
+                IO.println("Couldn't read the custom map to send it: " + e); //added by ikill240c
+                client.getClientInterface().receiveCustomMapChunk(-1, new byte[0]); //added by ikill240c
+                return; //added by ikill240c
+            } //added by ikill240c
+        } //added by ikill240c
+        client.custom_map_offset = 0; //added by ikill240c
+        client.custom_map_in_flight = 0; //added by ikill240c
+        fillCustomMapWindow(client); //added by ikill240c
+    } //added by ikill240c
+
+    void customMapChunkReceived(@NonNull PlayerSlot player_slot) { //added by ikill240c
+        ClientConnection client = locateClientForSlot(player_slot); //added by ikill240c
+        if (state != NEGOTIATING || client == null || client.custom_map_offset < 0) //added by ikill240c
+            return; //added by ikill240c
+        client.custom_map_in_flight = Math.max(0, client.custom_map_in_flight - 1); //added by ikill240c
+        fillCustomMapWindow(client); //added by ikill240c
+    } //added by ikill240c
+
+    private void fillCustomMapWindow(@NonNull ClientConnection client) { //added by ikill240c
+        byte[] data = custom_map_data; //added by ikill240c
+        while (data != null && client.custom_map_in_flight < CUSTOM_MAP_WINDOW && client.custom_map_offset < data.length) //added by ikill240c
+            sendNextCustomMapChunk(client); //added by ikill240c
+    } //added by ikill240c
+
+    private void sendNextCustomMapChunk(@NonNull ClientConnection client) { //added by ikill240c
+        byte[] data = custom_map_data; //added by ikill240c
+        if (data == null || client.custom_map_offset >= data.length) //added by ikill240c
+            return; //added by ikill240c - finished (or nothing to send)
+        int end = Math.min(client.custom_map_offset + CUSTOM_MAP_CHUNK_BYTES, data.length); //added by ikill240c
+        byte[] chunk = Arrays.copyOfRange(data, client.custom_map_offset, end); //added by ikill240c
+        client.custom_map_offset = end; //added by ikill240c
+        client.custom_map_in_flight++; //added by ikill240c
+        client.getClientInterface().receiveCustomMapChunk(data.length, chunk); //added by ikill240c
+    } //added by ikill240c
+
+    void customMapReady(@NonNull PlayerSlot player_slot) { //added by ikill240c
+        ClientConnection client = locateClientForSlot(player_slot); //added by ikill240c
+        if (client != null) { //added by ikill240c
+            client.has_custom_map = true; //added by ikill240c
+            client.custom_map_offset = -1; //added by ikill240c
+        } //added by ikill240c
+    } //added by ikill240c
+
+    // True unless this is a custom map game and a player (other than the host, who has the file) is missing it.
+    // If so, the host is told who is still downloading. //added by ikill240c
+    private boolean allPlayersHaveCustomMap(@NonNull PlayerSlot host_slot) { //added by ikill240c
+        if (!(generator instanceof CustomMapGenerator)) //added by ikill240c
+            return true; //added by ikill240c
+        StringBuilder waiting = new StringBuilder(); //added by ikill240c
+        Iterator<ClientConnection> it = getClientIterator(); //added by ikill240c
+        while (it.hasNext()) { //added by ikill240c
+            ClientConnection client = it.next(); //added by ikill240c
+            PlayerSlot slot = client.getClient().getPlayerSlot(); //added by ikill240c
+            if (slot == host_slot || client.has_custom_map) //added by ikill240c
+                continue; //added by ikill240c
+            if (waiting.length() > 0) //added by ikill240c
+                waiting.append(", "); //added by ikill240c
+            waiting.append(slot.getInfo() != null ? slot.getInfo().getName() : "a player"); //added by ikill240c
+        } //added by ikill240c
+        if (waiting.isEmpty()) //added by ikill240c
+            return true; //added by ikill240c
+        ClientConnection host = locateClientForSlot(host_slot); //added by ikill240c
+        if (host != null) //added by ikill240c
+            host.getClientInterface().customMapNotice("Can't start yet - still sending the map to: " + waiting); //added by ikill240c
+        return false; //added by ikill240c
+    } //added by ikill240c
 }

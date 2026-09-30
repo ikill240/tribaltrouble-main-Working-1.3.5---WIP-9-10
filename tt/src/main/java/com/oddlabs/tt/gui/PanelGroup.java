@@ -30,6 +30,23 @@ public final class PanelGroup extends GUIObject {
                 height = panel.getHeight();
             }
         }
+        // Was just the widest panel's own content width - fine as long as the tab row itself (laid
+        // out left to right below, one tab's width added per panel) fits within that. It doesn't
+        // once enough tabs are chained: this project's terrain menu has grown to 6 tabs for
+        // multiplayer (mode & presets, standard, advanced, custom, economy & AI, roster), and their
+        // combined tab-row width can exceed any single panel's own content width. When that
+        // happens, panels/tabs past that point get positioned beyond the group's own width - not
+        // rendered as part of it, not clickable, simply gone, which reads as "missing settings and
+        // tabs" even though the panels themselves are fully built. Widened to the tab row's own
+        // total width too, whichever is larger, so every tab actually fits inside the group instead
+        // of silently running off the edge as more get added. //added by ikill240c
+        int tab_row_width = Skin.getSkin().getPanelData().leftTabOffset(); //added by ikill240c
+        for (Panel panel : panels) { //added by ikill240c
+            tab_row_width += panel.getTab().getWidth(); //added by ikill240c
+        } //added by ikill240c
+        if (width < tab_row_width) { //added by ikill240c
+            width = tab_row_width; //added by ikill240c
+        } //added by ikill240c
         int total_height = height + tab_height;
         setDim(width, total_height);
         int x = Skin.getSkin().getPanelData().leftTabOffset();

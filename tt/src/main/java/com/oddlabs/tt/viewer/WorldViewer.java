@@ -37,6 +37,9 @@ import com.oddlabs.tt.player.Player;
 import com.oddlabs.tt.player.PlayerInfo;
 import com.oddlabs.tt.player.UnitInfo;
 import com.oddlabs.tt.player.VikingChieftainAI;
+import com.oddlabs.tt.player.ai.ExpertAI; //added by ikill240c
+import com.oddlabs.tt.player.fable.FableAI; //added by ikill240c
+import com.oddlabs.tt.player.ultra.UltraAI; //added by ikill240c
 import com.oddlabs.tt.render.DefaultRenderer;
 import com.oddlabs.tt.render.LandscapeRenderer;
 import com.oddlabs.tt.render.MatrixStack;
@@ -246,8 +249,13 @@ public final class WorldViewer implements Animated, AutoCloseable {
                         world_params.isAdaptiveAiEnabled()); //added by ikill240c 2026-09-12
                 case PlayerSlot.AI_EASY -> ai = new AdvancedAI(player, unit_info, AdvancedAI.DIFFICULTY_EASY,
                         world_params.isAdaptiveAiEnabled()); //added by ikill240c 2026-09-12
-                case PlayerSlot.AI_INSANE -> ai = new AdvancedAI(player, unit_info, AdvancedAI.DIFFICULTY_INSANE, //added by ikill240c
-                        world_params.isAdaptiveAiEnabled()); //added by ikill240c
+                case PlayerSlot.AI_EXPERT -> { //added by ikill240c
+                    ExpertAI expert = new ExpertAI(player, unit_info); //added by ikill240c
+                    expert.logTo(Settings.getSettings().last_event_log_dir); //added by ikill240c
+                    ai = expert; //added by ikill240c
+                } //added by ikill240c
+                case PlayerSlot.AI_ULTRA -> ai = new UltraAI(player, unit_info); //added by ikill240c
+                case PlayerSlot.AI_FABLE -> ai = new FableAI(player, unit_info); //added by ikill240c
                 case PlayerSlot.AI_BATTLE_TUTORIAL -> ai = new PassiveAI(player, unit_info, true);
                 case PlayerSlot.AI_TOWER_TUTORIAL -> {
                 }

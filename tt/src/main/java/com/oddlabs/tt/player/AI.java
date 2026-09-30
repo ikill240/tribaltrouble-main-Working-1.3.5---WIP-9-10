@@ -122,6 +122,11 @@ public abstract class AI implements Animated {
         return owner;
     }
 
+    /** True for the "Hard AI" skirmish opponent (used for achievements and difficulty dependent rules). */ //added by ikill240c
+    public boolean isHardDifficulty() { //added by ikill240c
+        return false; //added by ikill240c
+    } //added by ikill240c
+
     protected final void reclassify() {
         lists = getOwner().classifyUnits();
         classifyIndex(lists);

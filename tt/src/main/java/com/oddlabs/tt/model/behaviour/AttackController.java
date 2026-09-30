@@ -35,6 +35,12 @@ public final class AttackController extends Controller {
                 target), target, UnitGrid.SEA);
     }
 
+    // Needed by the ultra AI package (TowerManager.java) to check what a unit is currently
+    // attacking. //added by ikill240c
+    public Selectable<?> getTarget() { //added by ikill240c
+        return target; //added by ikill240c
+    } //added by ikill240c
+
     @Override
     public void decide() {
         if (target.isDead() || !canAttack()) {

@@ -519,6 +519,15 @@ public final class AdvancedAI extends AI {
         return difficulty;
     }
 
+    // True only for a genuinely, deliberately Hard-configured AI - matches isAdaptive()'s own
+    // reasoning just below: an adaptive AI currently sitting at DIFFICULTY_HARD wasn't actually
+    // configured as Hard by the player, so it must not report itself as hard-difficulty either.
+    // //added by ikill240c
+    @Override //added by ikill240c
+    public boolean isHardDifficulty() { //added by ikill240c
+        return !adaptive && difficulty == DIFFICULTY_HARD; //added by ikill240c
+    } //added by ikill240c
+
     // Whether this AI is running in Adaptive mode (see the 4-arg constructor above). Exposed so
     // achievement/UI code that keys off a fixed "Hard AI" concept can exclude adaptive AIs, since
     // an adaptive AI that happens to be sitting at DIFFICULTY_HARD at the moment of victory wasn't

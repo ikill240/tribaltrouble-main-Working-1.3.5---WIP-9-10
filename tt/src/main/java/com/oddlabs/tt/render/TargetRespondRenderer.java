@@ -21,7 +21,7 @@ public final class TargetRespondRenderer extends ShadowListRenderer {
     }
 
     public void addToTargetList(@NonNull LandscapeTargetRespond target) {
-        if (Globals.process_shadows)
+        if (Globals.processShadows())
             target_list.push(target);
     }
 

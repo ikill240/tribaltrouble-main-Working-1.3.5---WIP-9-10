@@ -269,7 +269,19 @@ public abstract class Selectable<T extends Template> extends Model implements Ta
 
     public final void popController() {
         assert !isDead();
-        controller_stack.removeLast();
+        // Was an unconditional removeLast() - the design elsewhere (getPrimaryController(),
+        // clearControllerStack()) treats controller_stack.getFirst() as a permanent default that's
+        // never meant to be removed, but this method itself never enforced that. A caller reaching
+        // for a fallback when the stack was already down to just that default (e.g.
+        // Unit.updateStuckCheck() popping after the default controller's own onStuck() returned
+        // false) would remove it too, leaving the stack empty - the very next decide() call then
+        // threw NoSuchElementException trying to read a controller that no longer existed. Guarded
+        // so the default controller is never the one removed; decide() still runs afterward so
+        // whatever's on top (unchanged, in this case) gets a chance to react again, rather than
+        // silently doing nothing. //added by ikill240c
+        if (controller_stack.size() > 1) { //added by ikill240c
+            controller_stack.removeLast(); //added by ikill240c
+        } //added by ikill240c
         decide();
     }
 

@@ -31,13 +31,13 @@ final class SelectableShadowRenderer extends ShadowListRenderer {
     }
 
     public void addToSelectionList(@NonNull ModelState<?> modelState) {
-        if (Globals.process_shadows) {
+        if (Globals.processShadows()) {
             selection_list.add(modelState);
         }
     }
 
     public void addToShadowList(@NonNull ModelState<?> modelState) {
-        if (Globals.process_shadows) {
+        if (Globals.processShadows()) {
             var model = modelState.getModel();
             if (null != model) {
                 shadowed_list.add(model);

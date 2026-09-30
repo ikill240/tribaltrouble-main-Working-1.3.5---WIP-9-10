@@ -18,6 +18,12 @@ public final class HuntController extends Controller {
         return unit.isCloseEnough(unit.getRange(target), target);
     }
 
+    // Needed by the fable/ultra AI packages (Military.java, Micro.java, MilitaryManager.java,
+    // CorpsManager.java) to check what a unit is currently hunting. //added by ikill240c
+    public @NonNull Selectable<?> getTarget() { //added by ikill240c
+        return target; //added by ikill240c
+    } //added by ikill240c
+
     @Override
     public void decide() {
         if (target.isDead()) {
