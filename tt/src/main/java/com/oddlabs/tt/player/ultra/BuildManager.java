@@ -87,7 +87,7 @@ final class BuildManager {
 
     private final @NonNull Context ctx;
     private final List<Task> tasks = new ArrayList<>();
-    private final Map<Unit, Task> assignment = new HashMap<>();
+    private final Map<Unit, Task> assignment = new java.util.LinkedHashMap<>(); //added by ikill240c - insertion order, identical on every machine (was HashMap/HashSet: memory-address order)
     private @Nullable Unit scout;
     private boolean opening = true;
     private final int foundation_lead;

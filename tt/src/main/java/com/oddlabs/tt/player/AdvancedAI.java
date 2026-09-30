@@ -497,10 +497,19 @@ public final class AdvancedAI extends AI {
     // Adaptive-AI entry point. When adaptive is true, the manually-passed difficulty is ignored in
     // favor of AdaptiveAIProfile's seed (based on the player's historical results), and animate()
     // will keep rebalancing it live via nodeAdaptiveDifficulty(). //added by ikill240c 2026-09-12
-    public AdvancedAI(@NonNull Player owner, UnitInfo unit_info, int difficulty, boolean adaptive) { //added by ikill240c 2026-09-12
+    public AdvancedAI(@NonNull Player owner, UnitInfo unit_info, int difficulty, boolean adaptive) { //added by ikill240c
+        this(owner, unit_info, difficulty, adaptive, -1); //added by ikill240c
+    } //added by ikill240c
+
+    // shared_seed_difficulty: the host's Adaptive AI seed (WorldParameters.getAdaptiveAiSeedDifficulty()), so every
+    // player's machine starts the AI identically; -1 = use this computer's own AdaptiveAIProfile. //added by ikill240c
+    public AdvancedAI(@NonNull Player owner, UnitInfo unit_info, int difficulty, boolean adaptive, //added by ikill240c
+            int shared_seed_difficulty) { //added by ikill240c
         super(owner, unit_info);
         this.adaptive = adaptive; //added by ikill240c 2026-09-12
-        this.difficulty = adaptive ? AdaptiveAIProfile.get().getSeedDifficulty() : difficulty; //added by ikill240c 2026-09-12
+        this.difficulty = !adaptive ? difficulty //added by ikill240c
+                : shared_seed_difficulty >= 0 ? shared_seed_difficulty //added by ikill240c
+                : AdaptiveAIProfile.get().getSeedDifficulty(); //added by ikill240c 2026-09-12
         // Stage 2: pick a behavior posture for this match based on how the human opponent has
         // historically played (PlayerStyleProfile), via the bandit's learned per-context statistics.
         // Chosen once at construction rather than re-picked mid-match - re-rolling the posture

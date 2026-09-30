@@ -79,4 +79,9 @@ public final class ClientInfo implements GameServerInterface, ConnectionInterfac
     public void customMapChunkReceived() { //added by ikill240c
         server.customMapChunkReceived(player_slot); //added by ikill240c
     } //added by ikill240c
+
+    @Override //added by ikill240c
+    public void reportBuild(String fingerprint) { //added by ikill240c
+        server.reportBuild(player_slot, fingerprint); //added by ikill240c
+    } //added by ikill240c
 }

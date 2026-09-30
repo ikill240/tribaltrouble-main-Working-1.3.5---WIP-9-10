@@ -18,4 +18,7 @@ public interface GameClientInterface {
 
     // A line for the lobby chat about the transfer (e.g. who is still downloading when the host tries to start). //added by ikill240c
     void customMapNotice(String text); //added by ikill240c
+
+    // A line for the lobby chat from the host's game itself (e.g. the build check), shown under the given label. //added by ikill240c
+    void lobbyNotice(String label, String text); //added by ikill240c
 }

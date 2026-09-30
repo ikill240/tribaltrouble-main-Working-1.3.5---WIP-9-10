@@ -38,7 +38,7 @@ final class MilitaryManager {
     private static final float TOWER_TARGET_RANGE = 8.93f;
 
     private final @NonNull Context ctx;
-    private final Map<Unit, Integer> squad_of = new HashMap<>();
+    private final Map<Unit, Integer> squad_of = new java.util.LinkedHashMap<>(); //added by ikill240c - insertion order, identical on every machine (was HashMap/HashSet: memory-address order)
     private final List<Unit> home = new ArrayList<>();
     private final List<Unit> main = new ArrayList<>();
     private final List<Unit> reinf = new ArrayList<>();
@@ -1996,7 +1996,7 @@ final class MilitaryManager {
                 if (ctx.now >= c.seen + 3.77f)
                     continue;
                 if (c.collected == null && ctx.now >= c.seen + 1.9f) {
-                    java.util.Set<Unit> set = new java.util.HashSet<>();
+                    java.util.Set<Unit> set = new java.util.LinkedHashSet<>(); //added by ikill240c - insertion order, identical on every machine (was HashMap/HashSet: memory-address order)
                     for (Unit u : ctx.model.me.warriors) {
                         if (MapAnalysis.dist2(u.getGridX(), u.getGridY(), c.by.getGridX(), c.by.getGridY()) <= 19 * 19)
                             set.add(u);
@@ -2286,7 +2286,7 @@ final class MilitaryManager {
                 ctx.orders.group(go, nx, ny, true);
             return;
         }
-        Map<Unit, Float> survive = new HashMap<>();
+        Map<Unit, Float> survive = new java.util.LinkedHashMap<>(); //added by ikill240c - insertion order, identical on every machine (was HashMap/HashSet: memory-address order)
         for (Unit w : squad) {
             if (w.getCurrentController() instanceof HuntController hc && hc.getTarget() instanceof Unit t
                     && !t.isDead()) {
@@ -2295,7 +2295,7 @@ final class MilitaryManager {
             }
         }
         // A tower whose garrison is stunned cannot shoot: the nearest warriors tear it down while it lasts.
-        java.util.Set<Unit> on_tower = new java.util.HashSet<>();
+        java.util.Set<Unit> on_tower = new java.util.LinkedHashSet<>(); //added by ikill240c - insertion order, identical on every machine (was HashMap/HashSet: memory-address order)
         if (stun_tower_focus) {
             for (Building b : buildings) {
                 if (!b.isComplete() || !b.getAbilities().hasAbilities(Abilities.ATTACK))

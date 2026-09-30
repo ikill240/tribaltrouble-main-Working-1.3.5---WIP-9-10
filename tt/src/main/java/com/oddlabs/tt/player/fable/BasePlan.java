@@ -107,7 +107,7 @@ public final class BasePlan {
     }
 
     /** Region-path legs cache: source region -> destination region -> {length to last via centre, via x, via y}. */
-    private final Map<Region, Map<Region, float[]>> walk_cache = new HashMap<>();
+    private final Map<Region, Map<Region, float[]>> walk_cache = new java.util.LinkedHashMap<>(); //added by ikill240c - insertion order, identical on every machine (was HashMap/HashSet: memory-address order)
 
     /**
      * Estimated walking distance in cells from (ax, ay) to (bx, by): straight inside a region, through the centres
@@ -124,7 +124,7 @@ public final class BasePlan {
         float direct = dist(ax, ay, bx, by);
         if (src == dst)
             return direct;
-        Map<Region, float[]> from = walk_cache.computeIfAbsent(src, k -> new HashMap<>());
+        Map<Region, float[]> from = walk_cache.computeIfAbsent(src, k -> new java.util.LinkedHashMap<>()); //added by ikill240c - insertion order, identical on every machine (was HashMap/HashSet: memory-address order)
         float[] via = from.get(dst);
         if (via == null) {
             via = regionLegs(grid, src, dst, ax, ay);

@@ -37,10 +37,16 @@ public class DefaultARMIArgumentWriter implements ARMIArgumentWriter {
             out.buffer().put(val);
         } else if (type.equals(HostSequenceID.class)) {
             HostSequenceID host_seq = (HostSequenceID) arg;
+            out.ensureCapacity(8); //added by ikill240c - writes straight into buffer(), see the ARMIEvent case below
             out.buffer().putInt(host_seq.getHostID());
             out.buffer().putInt(host_seq.getSequenceID());
         } else if (type.equals(ARMIEvent.class)) {
             ARMIEvent event = (ARMIEvent) arg;
+            // Writes straight into buffer(), bypassing write()'s growth check, and that buffer starts at 16382 bytes.
+            // Forwarding a larger event (the matchmaking relay re-packs every tunnelled message this way) threw
+            // BufferOverflowException, and the relay dropped the sender's connection - first hit by custom map
+            // transfers. Grow first, like the Distributable arguments in GameArgumentWriter already do. //added by ikill240c
+            out.ensureCapacity(2 + event.getEventSize()); //added by ikill240c
             out.buffer().putShort(event.getEventSize());
             event.write(out.buffer());
         } else {

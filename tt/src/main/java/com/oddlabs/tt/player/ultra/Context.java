@@ -34,7 +34,7 @@ final class Context {
     final @NonNull SiteFinder sites;
     final @NonNull Orders orders;
     /** Lookup only; never iterated in a way that affects decisions. */
-    private final Map<Unit, Role> roles = new HashMap<>();
+    private final Map<Unit, Role> roles = new java.util.LinkedHashMap<>(); //added by ikill240c - insertion order, identical on every machine (was HashMap/HashSet: memory-address order)
 
     ResourceTracker resources;
     BuildManager build;

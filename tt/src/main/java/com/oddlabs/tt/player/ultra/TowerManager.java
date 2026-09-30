@@ -36,10 +36,10 @@ final class TowerManager {
     private final @NonNull Context ctx;
     private final List<Slot> slots = new ArrayList<>();
     private final Map<Building, Unit> pending_garrison = new java.util.LinkedHashMap<>();
-    private final Map<Building, Float> last_order = new HashMap<>();
+    private final Map<Building, Float> last_order = new java.util.LinkedHashMap<>(); //added by ikill240c - insertion order, identical on every machine (was HashMap/HashSet: memory-address order)
     /** Towers we just evacuated: no new garrison until this time (or until repaired). */
-    private final Map<Building, Float> evacuated_until = new HashMap<>();
-    private final Map<Building, Unit> repairer = new HashMap<>();
+    private final Map<Building, Float> evacuated_until = new java.util.LinkedHashMap<>(); //added by ikill240c - insertion order, identical on every machine (was HashMap/HashSet: memory-address order)
+    private final Map<Building, Unit> repairer = new java.util.LinkedHashMap<>(); //added by ikill240c - insertion order, identical on every machine (was HashMap/HashSet: memory-address order)
     private final float c1_time;
     private final float c2_time;
     private final int tower_max;

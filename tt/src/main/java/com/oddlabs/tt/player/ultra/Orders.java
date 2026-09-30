@@ -46,7 +46,7 @@ final class Orders {
 
     private final @NonNull Context ctx;
     private final @NonNull Player p;
-    private final Map<Unit, Last> last = new HashMap<>();
+    private final Map<Unit, Last> last = new java.util.LinkedHashMap<>(); //added by ikill240c - insertion order, identical on every machine (was HashMap/HashSet: memory-address order)
     int issued;
 
     Orders(@NonNull Context ctx) {

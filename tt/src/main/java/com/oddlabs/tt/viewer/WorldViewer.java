@@ -244,11 +244,11 @@ public final class WorldViewer implements Animated, AutoCloseable {
                 // AdaptiveAIProfile when adaptive is true, so the DIFFICULTY_* passed here only
                 // matters when the toggle is off. //added by ikill240c 2026-09-12
                 case PlayerSlot.AI_NORMAL -> ai = new AdvancedAI(player, unit_info, AdvancedAI.DIFFICULTY_NORMAL,
-                        world_params.isAdaptiveAiEnabled()); //added by ikill240c 2026-09-12
+                        world_params.isAdaptiveAiEnabled(), world_params.getAdaptiveAiSeedDifficulty()); //added by ikill240c //added by ikill240c 2026-09-12
                 case PlayerSlot.AI_HARD -> ai = new AdvancedAI(player, unit_info, AdvancedAI.DIFFICULTY_HARD,
-                        world_params.isAdaptiveAiEnabled()); //added by ikill240c 2026-09-12
+                        world_params.isAdaptiveAiEnabled(), world_params.getAdaptiveAiSeedDifficulty()); //added by ikill240c //added by ikill240c 2026-09-12
                 case PlayerSlot.AI_EASY -> ai = new AdvancedAI(player, unit_info, AdvancedAI.DIFFICULTY_EASY,
-                        world_params.isAdaptiveAiEnabled()); //added by ikill240c 2026-09-12
+                        world_params.isAdaptiveAiEnabled(), world_params.getAdaptiveAiSeedDifficulty()); //added by ikill240c //added by ikill240c 2026-09-12
                 case PlayerSlot.AI_EXPERT -> { //added by ikill240c
                     ExpertAI expert = new ExpertAI(player, unit_info); //added by ikill240c
                     expert.logTo(Settings.getSettings().last_event_log_dir); //added by ikill240c

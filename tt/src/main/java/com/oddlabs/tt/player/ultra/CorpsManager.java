@@ -25,7 +25,7 @@ final class CorpsManager {
 
     private final @NonNull Context ctx;
     private final List<Unit> corps = new ArrayList<>();
-    private final Map<Unit, Selectable<?>> target = new HashMap<>();
+    private final Map<Unit, Selectable<?>> target = new java.util.LinkedHashMap<>(); //added by ikill240c - insertion order, identical on every machine (was HashMap/HashSet: memory-address order)
     private int pending_deploy;
     private boolean pending_wood;
     private float pending_time;
@@ -160,7 +160,7 @@ final class CorpsManager {
             int py = priority(y, anchor);
             return Integer.compare(px, py);
         });
-        Map<Building, Integer> assigned = new HashMap<>();
+        Map<Building, Integer> assigned = new java.util.LinkedHashMap<>(); //added by ikill240c - insertion order, identical on every machine (was HashMap/HashSet: memory-address order)
         for (Unit u : corps) {
             Selectable<?> t = target.get(u);
             if (t instanceof Building b && !b.isDead() && towers.contains(b))

@@ -29,7 +29,7 @@ final class ResourceTracker {
     private List<IronSupply> iron = new ArrayList<>();
     private List<RockSupply> rock = new ArrayList<>();
     /** Our gatherers per supply node (lookup only). */
-    private final Map<Supply, Integer> crowd = new HashMap<>();
+    private final Map<Supply, Integer> crowd = new java.util.LinkedHashMap<>(); //added by ikill240c - insertion order, identical on every machine (was HashMap/HashSet: memory-address order)
     private float last_scan = Float.NEGATIVE_INFINITY;
 
     private final boolean path_aware;

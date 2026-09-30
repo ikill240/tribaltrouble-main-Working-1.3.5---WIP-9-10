@@ -215,6 +215,8 @@ public final class Server implements ConnectionListenerInterface {
     public void startServer(@NonNull PlayerSlot slot) {
         if (!canControlSlot(slot, 0) || getNumReady() != getNumClients())// || PlayerSlot.getNumTeams(players) < 2)
             return;
+        if (!buildCheckPassed()) //added by ikill240c
+            return; //added by ikill240c
         if (!allPlayersHaveCustomMap(slot)) //added by ikill240c
             return; //added by ikill240c
         state = SYNCHRONIZING;
@@ -363,7 +365,11 @@ public final class Server implements ConnectionListenerInterface {
     // pacing (not writeBufferDrained) because internet lobbies run through the matchmaking tunnel, whose connection
     // reports "drained" immediately from inside the send call - pacing on that would send the whole map at once.
     // The host can't start the game until every player has reported an identical copy. //added by ikill240c
-    private static final int CUSTOM_MAP_CHUNK_BYTES = 28 * 1024; //added by ikill240c
+    // Was 28KB. Internet lobbies are relayed by the matchmaking server, which re-packs every relayed message into a
+    // buffer that starts at 16382 bytes and (before the DefaultARMIArgumentWriter fix) didn't grow for relayed
+    // messages - a 28KB piece overflowed it and the relay dropped the host's connection. 12KB plus the relay's
+    // wrapping stays well under 16382, so this works even on a relay server that doesn't have that fix. //added by ikill240c
+    private static final int CUSTOM_MAP_CHUNK_BYTES = 12 * 1024; //added by ikill240c
     private static final int CUSTOM_MAP_WINDOW = 2; //added by ikill240c
     private byte @Nullable [] custom_map_data; //added by ikill240c - compressed map, built on the first request
 
@@ -441,5 +447,75 @@ public final class Server implements ConnectionListenerInterface {
         if (host != null) //added by ikill240c
             host.getClientInterface().customMapNotice("Can't start yet - still sending the map to: " + waiting); //added by ikill240c
         return false; //added by ikill240c
+    } //added by ikill240c
+
+    // ---------------- build check ---------------- //added by ikill240c
+    // Multiplayer is lockstep: every player's computer simulates the whole match, so different builds go out of sync
+    // (checksum mismatch) seconds into the game. Each joining player reports its BuildFingerprint; a different one is
+    // announced to that player and the host right away, and the host's first Start with a mismatch is held back with a
+    // warning - pressing Start again plays anyway (the fingerprint can differ harmlessly, e.g. a slightly different
+    // JDK compiled the same source). //added by ikill240c
+    private static final String BUILD_CHECK_LABEL = "Build check"; //added by ikill240c
+    private boolean build_start_warned; //added by ikill240c
+
+    void reportBuild(@NonNull PlayerSlot player_slot, @Nullable String fingerprint) { //added by ikill240c
+        ClientConnection client = locateClientForSlot(player_slot); //added by ikill240c
+        if (state != NEGOTIATING || client == null || fingerprint == null) //added by ikill240c
+            return; //added by ikill240c
+        client.build_fingerprint = fingerprint.length() > 128 ? fingerprint.substring(0, 128) : fingerprint; //added by ikill240c
+        String mine = BuildFingerprint.get(); //added by ikill240c
+        if (player_slot.getSlot() == 0 || BuildFingerprint.matches(mine, client.build_fingerprint)) //added by ikill240c
+            return; //added by ikill240c - the host itself, or a matching build
+        build_start_warned = false; //added by ikill240c - a new mismatch gets its own warning at Start
+        String theirs = BuildFingerprint.shortForm(client.build_fingerprint); //added by ikill240c
+        String host = BuildFingerprint.shortForm(mine); //added by ikill240c
+        client.getClientInterface().lobbyNotice(BUILD_CHECK_LABEL, "Your game build (" + theirs //added by ikill240c
+                + ") is different from the host's (" + host + "). The match will almost certainly go out of sync -" //added by ikill240c
+                + " use the exact same copy of the game as the host."); //added by ikill240c
+        ClientConnection host_client = hostClient(); //added by ikill240c
+        if (host_client != null) //added by ikill240c
+            host_client.getClientInterface().lobbyNotice(BUILD_CHECK_LABEL, playerName(player_slot) + "'s game build (" //added by ikill240c
+                    + theirs + ") is different from yours (" + host + "). The match will almost certainly go out of sync."); //added by ikill240c
+    } //added by ikill240c
+
+    // False (and a warning to the host) the first time Start is pressed while a player's build differs or wasn't reported. //added by ikill240c
+    private boolean buildCheckPassed() { //added by ikill240c
+        String mine = BuildFingerprint.get(); //added by ikill240c
+        StringBuilder mismatched = new StringBuilder(); //added by ikill240c
+        Iterator<ClientConnection> it = getClientIterator(); //added by ikill240c
+        while (it.hasNext()) { //added by ikill240c
+            ClientConnection client = it.next(); //added by ikill240c
+            PlayerSlot slot = client.getClient().getPlayerSlot(); //added by ikill240c
+            if (slot.getSlot() == 0 || (client.build_fingerprint != null //added by ikill240c
+                    && BuildFingerprint.matches(mine, client.build_fingerprint))) //added by ikill240c
+                continue; //added by ikill240c
+            if (!mismatched.isEmpty()) //added by ikill240c
+                mismatched.append(", "); //added by ikill240c
+            mismatched.append(playerName(slot)).append(client.build_fingerprint == null //added by ikill240c
+                    ? " (didn't report a build - probably an older version)" : ""); //added by ikill240c
+        } //added by ikill240c
+        if (mismatched.isEmpty() || build_start_warned) //added by ikill240c
+            return true; //added by ikill240c
+        build_start_warned = true; //added by ikill240c
+        ClientConnection host_client = hostClient(); //added by ikill240c
+        if (host_client != null) //added by ikill240c
+            host_client.getClientInterface().lobbyNotice(BUILD_CHECK_LABEL, "Not started: these players are on a" //added by ikill240c
+                    + " different game build: " + mismatched + ". The match will likely go out of sync. Press Start" //added by ikill240c
+                    + " again to play anyway."); //added by ikill240c
+        return false; //added by ikill240c
+    } //added by ikill240c
+
+    private @Nullable ClientConnection hostClient() { //added by ikill240c
+        Iterator<ClientConnection> it = getClientIterator(); //added by ikill240c
+        while (it.hasNext()) { //added by ikill240c
+            ClientConnection client = it.next(); //added by ikill240c
+            if (client.getClient().getPlayerSlot().getSlot() == 0) //added by ikill240c
+                return client; //added by ikill240c
+        } //added by ikill240c
+        return null; //added by ikill240c
+    } //added by ikill240c
+
+    private static @NonNull String playerName(@NonNull PlayerSlot slot) { //added by ikill240c
+        return slot.getInfo() != null ? slot.getInfo().getName() : "A player"; //added by ikill240c
     } //added by ikill240c
 }

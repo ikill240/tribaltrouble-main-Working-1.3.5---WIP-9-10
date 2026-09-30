@@ -1869,6 +1869,8 @@ public final class TerrainMenu extends Group {
                         .magic3Enabled(cb_magic3_enabled.isMarked()) //added by ikill240c
                         .chiefsCourageEnabled(cb_chiefs_courage_enabled.isMarked()) //added by ikill240c
                         .adaptiveAiEnabled(cb_adaptive_ai_enabled.isMarked()) //added by ikill240c - was mode_and_presets.isAdaptiveAiEnabled(), stale after that checkbox moved back into TerrainMenu itself
+                        .adaptiveAiSeedDifficulty(cb_adaptive_ai_enabled.isMarked() //added by ikill240c
+                                ? com.oddlabs.tt.player.AdaptiveAIProfile.get().getSeedDifficulty() : -1) //added by ikill240c - the host's seed, used on every machine
                         .teamTogether(cb_team_together.isMarked()) //added by ikill240c
                         .magic1Cost(snapshotMagic1Cost()) //added by ikill240c
                         .magic2Cost(snapshotMagic2Cost()) //added by ikill240c

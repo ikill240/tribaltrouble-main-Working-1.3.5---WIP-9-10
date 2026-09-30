@@ -79,6 +79,11 @@ public final class WorldParameters implements Serializable {
     // encoding and the multiplayer RosterTemplate.Fill enum - a new tier there risks breaking
     // mapcode/network compatibility. //added by ikill240c 2026-09-12
     private final boolean adaptive_ai_enabled; //added by ikill240c 2026-09-12
+    // Multiplayer: Adaptive AI seeds its starting difficulty from AdaptiveAIProfile, a file of the player's past
+    // results in each computer's own game folder - so every machine seeded the same AI differently and the lockstep
+    // simulation diverged (checksum mismatch). The host now reads its seed once and it travels here to every player.
+    // -1 = not set (older saved settings): each machine falls back to its own profile, as before. //added by ikill240c
+    private final int adaptive_ai_seed_difficulty; //added by ikill240c
     // When true, player start positions are grouped so that teammates spawn adjacent to one
     // another instead of the normal fully-random/procedural placement - see Landscape.java's
     // generateUnitLocations() for where this is actually consulted. //added by ikill240c
@@ -150,6 +155,7 @@ public final class WorldParameters implements Serializable {
         this.magic3_enabled = b.magic3_enabled; //added by ikill240c
         this.chiefs_courage_enabled = b.chiefs_courage_enabled; //added by ikill240c
         this.adaptive_ai_enabled = b.adaptive_ai_enabled; //added by ikill240c 2026-09-12
+        this.adaptive_ai_seed_difficulty = b.adaptive_ai_seed_difficulty; //added by ikill240c
         this.team_together = b.team_together; //added by ikill240c
         this.magic1_cost = b.magic1_cost; //added by ikill240c
         this.magic2_cost = b.magic2_cost; //added by ikill240c
@@ -284,6 +290,10 @@ public final class WorldParameters implements Serializable {
         return adaptive_ai_enabled;
     }
 
+    public int getAdaptiveAiSeedDifficulty() { //added by ikill240c
+        return adaptive_ai_seed_difficulty; //added by ikill240c
+    } //added by ikill240c
+
     public boolean isTeamTogether() { //added by ikill240c
         return team_together;
     }
@@ -372,6 +382,7 @@ public final class WorldParameters implements Serializable {
         private boolean chiefs_courage_enabled = true; //added by ikill240c
         // Off by default - opt-in experimental feature. //added by ikill240c 2026-09-12
         private boolean adaptive_ai_enabled = false; //added by ikill240c 2026-09-12
+        private int adaptive_ai_seed_difficulty = -1; //added by ikill240c
         private boolean team_together = false; //added by ikill240c
         // Defaults match Unit.java's original hardcoded MAX_MAGIC_ENERGY values exactly. //added by ikill240c
         private float magic1_cost = 40f; //added by ikill240c
@@ -541,6 +552,11 @@ public final class WorldParameters implements Serializable {
             this.adaptive_ai_enabled = v;
             return this;
         }
+
+        public @NonNull Builder adaptiveAiSeedDifficulty(int v) { //added by ikill240c
+            this.adaptive_ai_seed_difficulty = v; //added by ikill240c
+            return this; //added by ikill240c
+        } //added by ikill240c
 
         public @NonNull Builder teamTogether(boolean v) { //added by ikill240c
             this.team_together = v;

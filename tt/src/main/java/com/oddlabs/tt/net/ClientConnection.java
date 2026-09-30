@@ -12,7 +12,9 @@ final class ClientConnection {
     // and whether this player has reported an identical copy of the map. //added by ikill240c
     int custom_map_offset = -1; //added by ikill240c
     boolean has_custom_map; //added by ikill240c
-    int custom_map_in_flight; //added by ikill240c - pieces sent but not yet acknowledged
+    int custom_map_in_flight; //added by ikill240c
+    // BuildFingerprint this player reported on joining; null until (or unless) it does. //added by ikill240c
+    @org.jspecify.annotations.Nullable String build_fingerprint; //added by ikill240c - pieces sent but not yet acknowledged
 
     public ClientConnection(AbstractConnection conn, ClientInfo client) {
         this.connection = conn;

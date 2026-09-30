@@ -144,6 +144,7 @@ public final class Client implements ARMIEventBroker, GameClientInterface, Conne
         this.generator = generator;
         this.player_slot = player_slot;
         getConfigurationListener().connected(this, game, generator, player_slot, player_count);
+        gameserver_interface.reportBuild(BuildFingerprint.get()); //added by ikill240c - lets the host warn about mismatched builds
         // Custom map game: report that we already have the host's map, or ask the host to send it. //added by ikill240c
         if (generator instanceof CustomMapGenerator map) { //added by ikill240c
             if (map.hasLocalCopy()) { //added by ikill240c
@@ -254,5 +255,11 @@ public final class Client implements ARMIEventBroker, GameClientInterface, Conne
     public void customMapNotice(@Nullable String text) { //added by ikill240c
         if (text != null) //added by ikill240c
             Network.getChatHub().chat(new ChatMessage("Custom map", text, ChatMessage.Type.GAME_MENU)); //added by ikill240c
+    } //added by ikill240c
+
+    @Override //added by ikill240c
+    public void lobbyNotice(@Nullable String label, @Nullable String text) { //added by ikill240c
+        if (label != null && text != null) //added by ikill240c
+            Network.getChatHub().chat(new ChatMessage(label, text, ChatMessage.Type.GAME_MENU)); //added by ikill240c
     } //added by ikill240c
 }

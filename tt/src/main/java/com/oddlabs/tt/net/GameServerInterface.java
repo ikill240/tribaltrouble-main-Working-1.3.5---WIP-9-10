@@ -17,4 +17,7 @@ public interface GameServerInterface {
 
     // Sent by the player after storing each piece, so the host knows it may send another (flow control). //added by ikill240c
     void customMapChunkReceived(); //added by ikill240c
+
+    // Build check: a joining player reports its BuildFingerprint so the host can warn about mismatched builds. //added by ikill240c
+    void reportBuild(String fingerprint); //added by ikill240c
 }

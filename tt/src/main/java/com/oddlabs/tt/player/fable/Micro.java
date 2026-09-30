@@ -45,7 +45,7 @@ final class Micro {
     private final @NonNull Jobs jobs;
     private final @NonNull Params params;
 
-    private final Map<Unit, Float> survive = new HashMap<>();
+    private final Map<Unit, Float> survive = new java.util.LinkedHashMap<>(); //added by ikill240c - insertion order, identical on every machine (was HashMap/HashSet: memory-address order)
     private final List<Unit> enemies = new ArrayList<>();
     private final List<LandBuilding> buildings = new ArrayList<>();
 
