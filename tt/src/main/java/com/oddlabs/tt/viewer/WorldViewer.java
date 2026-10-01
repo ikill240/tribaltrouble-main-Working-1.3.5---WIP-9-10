@@ -39,6 +39,7 @@ import com.oddlabs.tt.player.UnitInfo;
 import com.oddlabs.tt.player.VikingChieftainAI;
 import com.oddlabs.tt.player.ai.ExpertAI; //added by ikill240c
 import com.oddlabs.tt.player.fable.FableAI; //added by ikill240c
+import com.oddlabs.tt.player.gauntlet.GauntletAI; //added by ikill240c
 import com.oddlabs.tt.player.ultra.UltraAI; //added by ikill240c
 import com.oddlabs.tt.render.DefaultRenderer;
 import com.oddlabs.tt.render.LandscapeRenderer;
@@ -238,7 +239,7 @@ public final class WorldViewer implements Animated, AutoCloseable {
             @NonNull Player player, @NonNull UnitInfo unit_info, int initial_gamespeed) {
         if (slot.getType() == PlayerSlot.AI) {
             AI ai = null;
-            switch (slot.getAIDifficulty()) {
+            switch (ingame_info.resolveAIDifficulty(slot.getAIDifficulty())) { //added by ikill240c - campaign: chosen enemy AI
                 // Adaptive AI (WorldParameters.isAdaptiveAiEnabled()) overrides whichever manual tier
                 // was picked for this slot - the 4-arg constructor re-seeds difficulty from
                 // AdaptiveAIProfile when adaptive is true, so the DIFFICULTY_* passed here only
@@ -256,6 +257,7 @@ public final class WorldViewer implements Animated, AutoCloseable {
                 } //added by ikill240c
                 case PlayerSlot.AI_ULTRA -> ai = new UltraAI(player, unit_info); //added by ikill240c
                 case PlayerSlot.AI_FABLE -> ai = new FableAI(player, unit_info); //added by ikill240c
+                case PlayerSlot.AI_GAUNTLET -> ai = new GauntletAI(player, unit_info, ""); //added by ikill240c - "" = default settings, as in the Gauntlet project
                 case PlayerSlot.AI_BATTLE_TUTORIAL -> ai = new PassiveAI(player, unit_info, true);
                 case PlayerSlot.AI_TOWER_TUTORIAL -> {
                 }

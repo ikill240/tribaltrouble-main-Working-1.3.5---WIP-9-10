@@ -61,6 +61,11 @@ public final class GatherController<S extends Supply> extends Controller {
 
     @Override
     public boolean onStuck() {//added by ikill240c - was void; see Controller.onStuck()'s own comment for why this now reports back that it handled it
+        // Don't pick the same resource again: SupplyFinder chooses the nearest uncrowded one, which was usually the
+        // very resource this peon was stuck on (unreachable, or its only harvesting spot taken), so it bounced straight
+        // back and the pile-up never cleared. //added by ikill240c
+        if (unit.getCurrentController() instanceof HarvestController<?> hc && hc.getSupply() != null) //added by ikill240c
+            unit.setAvoidedSupply(hc.getSupply()); //added by ikill240c
         resetGiveUpCounters();
         supply = null;
         unit.swapController(new GatherController<>(unit, null, supply_type, assigned_building));

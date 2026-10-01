@@ -8,7 +8,6 @@ import com.oddlabs.tt.gui.Origin; //added by ikill240c
 import com.oddlabs.tt.gui.Skin; //added by ikill240c
 import com.oddlabs.tt.model.Race; //added by ikill240c
 import com.oddlabs.tt.model.Unit; //added by ikill240c
-import com.oddlabs.tt.player.AdvancedAI; //added by ikill240c
 import com.oddlabs.tt.player.Player; //added by ikill240c
 import com.oddlabs.tt.viewer.WorldViewer; //added by ikill240c
 import org.jspecify.annotations.NonNull; //added by ikill240c
@@ -20,7 +19,7 @@ import java.util.List; //added by ikill240c
 // Rather than building an entirely separate "zombie faction" with its own spawning/targeting logic
 // from scratch, this periodically drops a batch of free warriors directly into each existing enemy
 // AI player's own army, near that player's own starting position - those units then get picked up
-// by that player's OWN AdvancedAI on its own next attack-decision cycle exactly like any other
+// by that player's OWN AI (any type) on its own next attack-decision cycle exactly like any other
 // idle warrior would, with zero new attack/targeting code needed here. The wave only grows in
 // size; there's no economy behind it and nothing to gather or produce, so difficulty comes purely
 // from mounting numbers rather than the enemy's own economic growth (which still happens too,
@@ -28,8 +27,10 @@ import java.util.List; //added by ikill240c
 public final class SurvivalModeRules implements GameModeRules { //added by ikill240c
 
     private static final float WAVE_INTERVAL_SECONDS = 60f; // time between waves //added by ikill240c
-    private static final int BASE_WAVE_SIZE = 0; // wave 1's size //added by ikill240c
     private static final int GROWTH_PER_WAVE = 6; // additional warriors added to each subsequent wave //added by ikill240c
+    // Was 0, so wave 1 spawned nothing and the first warriors only came at the 2-minute mark. Now wave N brings
+    // N * GROWTH_PER_WAVE warriors (6, 12, 18, ...). //added by ikill240c
+    private static final int BASE_WAVE_SIZE = GROWTH_PER_WAVE; // wave 1's size //added by ikill240c
     private static final float SPAWN_SCATTER_RADIUS = 25f; // world units around the reinforced player's own start position //added by ikill240c
 
     public static final @NonNull String OPTION_WAVE_INTERVAL = "survival_wave_interval"; //added by ikill240c
@@ -113,14 +114,18 @@ public final class SurvivalModeRules implements GameModeRules { //added by ikill
     // designated "zombie" player - in a multi-opponent lobby, every enemy grows in lockstep with
     // the wave counter, keeping the pressure escalating from every direction at once rather than
     // only one side of the map. //added by ikill240c
+    // Who gets reinforced: every AI player that is an enemy of at least one human player. Was "enemies of the local
+    // player whose AI is an AdvancedAI", which (a) skipped Expert/Ultra/Fable/Gauntlet enemies entirely, so no
+    // warriors ever spawned against them, and (b) depended on which player is local - different on each computer
+    // in a multiplayer free-for-all, so each machine spawned different units and the game went out of sync.
+    // This version gives every computer the same answer, and is identical in singleplayer. //added by ikill240c
     private void spawnWave(@NonNull WorldViewer viewer, int wave) { //added by ikill240c
         int wave_size = BASE_WAVE_SIZE + (wave - 1) * GROWTH_PER_WAVE; //added by ikill240c
-        Player local_player = viewer.getLocalPlayer(); //added by ikill240c
         int[] warrior_templates = {Race.UNIT_WARRIOR_ROCK, Race.UNIT_WARRIOR_IRON, Race.UNIT_WARRIOR_RUBBER}; //added by ikill240c
 
         for (Player p : viewer.getWorld().getPlayers()) { //added by ikill240c
-            if (p == local_player || !local_player.isEnemy(p) || !(p.getAI() instanceof AdvancedAI)) //added by ikill240c
-                continue; // only AI-controlled actual enemies of the local player get reinforced //added by ikill240c
+            if (p.getAI() == null || !isEnemyOfAHuman(viewer, p)) //added by ikill240c
+                continue; //added by ikill240c - humans aren't reinforced, nor AIs allied with every human
             Race race = p.getRace(); //added by ikill240c
             float base_x = p.getStartX(); //added by ikill240c
             float base_y = p.getStartY(); //added by ikill240c
@@ -132,5 +137,12 @@ public final class SurvivalModeRules implements GameModeRules { //added by ikill
                 new Unit(p, spawn_x, spawn_y, null, race.getUnitTemplate(template)); //added by ikill240c
             } //added by ikill240c
         } //added by ikill240c
+    } //added by ikill240c
+
+    private static boolean isEnemyOfAHuman(@NonNull WorldViewer viewer, @NonNull Player ai_player) { //added by ikill240c
+        for (Player human : viewer.getWorld().getPlayers()) //added by ikill240c
+            if (human.getAI() == null && human.isEnemy(ai_player)) //added by ikill240c
+                return true; //added by ikill240c
+        return false; //added by ikill240c
     } //added by ikill240c
 } //added by ikill240c

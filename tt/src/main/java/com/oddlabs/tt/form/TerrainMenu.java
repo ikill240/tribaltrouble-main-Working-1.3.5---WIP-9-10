@@ -165,7 +165,7 @@ public final class TerrainMenu extends Group {
     // not a valid code to begin with), but map codes with no Insane slot round-trip identically
     // either way since their actual difficulty digit values (0-3) haven't changed, only the
     // modulus used to size the field around them. //added by ikill240c
-    private static final int DIFFICULTY_CARDINALITY = 7; // raised from 5 to 7: Insane's single slot is now Expert/Ultra/Fable's three (see the pulldown construction and difficultyIndexToFill()/fillToDifficultyIndex() below) //added by ikill240c
+    private static final int DIFFICULTY_CARDINALITY = 8; // raised from 5 to 7: Insane's single slot is now Expert/Ultra/Fable's three (see the pulldown construction and difficultyIndexToFill()/fillToDifficultyIndex() below) //added by ikill240c (8 since Gauntlet)
     private static final int RACE_CARDINALITY = 2;
     private static final int TEAM_CARDINALITY = 6;
     private static final @NonNull BigInteger MAX_VALUE;
@@ -794,6 +794,7 @@ public final class TerrainMenu extends Group {
         pm_set_all_difficulty.addItem(new PulldownItem<>(i18n("expert_ai"), RosterTemplate.Fill.EXPERT_AI)); //added by ikill240c
         pm_set_all_difficulty.addItem(new PulldownItem<>(i18n("ultra_ai"), RosterTemplate.Fill.ULTRA_AI)); //added by ikill240c
         pm_set_all_difficulty.addItem(new PulldownItem<>(i18n("fable_ai"), RosterTemplate.Fill.FABLE_AI)); //added by ikill240c
+        pm_set_all_difficulty.addItem(new PulldownItem<>(i18n("gauntlet_ai"), RosterTemplate.Fill.GAUNTLET_AI)); //added by ikill240c
         // Listener itself is registered further down, AFTER difficulty_pulldown_menus is actually
         // assigned (buildPlayerSlots() does that) - it's a blank final field, and the compiler
         // rejects any reference to one, even from inside a lambda that won't actually run until
@@ -1709,6 +1710,7 @@ public final class TerrainMenu extends Group {
                 difficulty_pulldown_menus[i].addItem(new PulldownItem<>(i18n("expert_ai"))); //added by ikill240c
                 difficulty_pulldown_menus[i].addItem(new PulldownItem<>(i18n("ultra_ai"))); //added by ikill240c
                 difficulty_pulldown_menus[i].addItem(new PulldownItem<>(i18n("fable_ai"))); //added by ikill240c
+                difficulty_pulldown_menus[i].addItem(new PulldownItem<>(i18n("gauntlet_ai"))); //added by ikill240c - SP index 7 / MP index 8
             }
 
             difficulty_pulldown_buttons[i] = new PulldownButton<>(gui_root, difficulty_pulldown_menus[i], 0, 115);
@@ -2699,6 +2701,7 @@ public final class TerrainMenu extends Group {
                 case 5 -> RosterTemplate.Fill.EXPERT_AI; //added by ikill240c
                 case 6 -> RosterTemplate.Fill.ULTRA_AI; //added by ikill240c
                 case 7 -> RosterTemplate.Fill.FABLE_AI; //added by ikill240c
+                case 8 -> RosterTemplate.Fill.GAUNTLET_AI; //added by ikill240c
                 default -> RosterTemplate.Fill.OPEN; //added by ikill240c
             }; //added by ikill240c
         } //added by ikill240c
@@ -2709,6 +2712,7 @@ public final class TerrainMenu extends Group {
             case 4 -> RosterTemplate.Fill.EXPERT_AI; //added by ikill240c
             case 5 -> RosterTemplate.Fill.ULTRA_AI; //added by ikill240c
             case 6 -> RosterTemplate.Fill.FABLE_AI; //added by ikill240c
+            case 7 -> RosterTemplate.Fill.GAUNTLET_AI; //added by ikill240c
             default -> RosterTemplate.Fill.CLOSED; // SP index 0 - see the construction loop, SP has no Open item at all //added by ikill240c
         }; //added by ikill240c
     }
@@ -2728,6 +2732,7 @@ public final class TerrainMenu extends Group {
             case EXPERT_AI -> PlayerSlot.AI_EXPERT; //added by ikill240c
             case ULTRA_AI -> PlayerSlot.AI_ULTRA; //added by ikill240c
             case FABLE_AI -> PlayerSlot.AI_FABLE; //added by ikill240c
+            case GAUNTLET_AI -> PlayerSlot.AI_GAUNTLET; //added by ikill240c
             case HOST, OPEN, CLOSED -> PlayerSlot.AI_NONE; // shouldn't be reached - see method comment //added by ikill240c
         }; //added by ikill240c
     } //added by ikill240c
@@ -2783,6 +2788,7 @@ public final class TerrainMenu extends Group {
                 case EXPERT_AI -> 5; //added by ikill240c
                 case ULTRA_AI -> 6; //added by ikill240c
                 case FABLE_AI -> 7; //added by ikill240c
+                case GAUNTLET_AI -> 8; //added by ikill240c
             };
         }
         return switch (fill) {
@@ -2793,6 +2799,7 @@ public final class TerrainMenu extends Group {
             case EXPERT_AI -> 4; //added by ikill240c
             case ULTRA_AI -> 5; //added by ikill240c
             case FABLE_AI -> 6; //added by ikill240c
+            case GAUNTLET_AI -> 7; //added by ikill240c
         };
     }
 

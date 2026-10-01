@@ -16,6 +16,11 @@ import org.jspecify.annotations.Nullable; //added by ikill240c
 public final class EnterController extends Controller {
     private final @NonNull Building building;
     private final @NonNull Unit unit;
+    // Stuck while walking to the building (e.g. peons queuing at the side of the Quarters nearest them): re-route up
+    // to this many times - a fresh path can lead round to a free side - before letting the stuck check cancel the order.
+    // Before this, the stuck check cancelled the order on the first stall, leaving peons standing at the door. //added by ikill240c
+    private static final int MAX_STUCK_REROUTES = 3; //added by ikill240c
+    private int stuck_reroutes; //added by ikill240c
 
     public EnterController(@NonNull Unit unit, @NonNull Building building) {
         super(1);
@@ -147,4 +152,12 @@ public final class EnterController extends Controller {
                 unit.setBehaviour(new WalkBehaviour(unit, building, 0, false));
         }
     }
+
+    @Override //added by ikill240c
+    public boolean onStuck() { //added by ikill240c
+        if (building.isDead() || ++stuck_reroutes > MAX_STUCK_REROUTES) //added by ikill240c
+            return false; //added by ikill240c - give up: the stuck check cancels the order
+        unit.setBehaviour(new WalkBehaviour(unit, building, 0, false)); //added by ikill240c
+        return true; //added by ikill240c
+    } //added by ikill240c
 }

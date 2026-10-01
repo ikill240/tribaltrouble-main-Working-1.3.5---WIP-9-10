@@ -39,6 +39,7 @@ public final class HarvestController<S extends Supply> extends Controller {
         } //added by ikill240c
         if (supply != null && !supply.isEmpty() && unit.isCloseEnough(0f, supply)) {
             resetGiveUpCounter(0);
+            unit.setAvoidedSupply(null); //added by ikill240c - harvesting again, so earlier avoidance no longer applies
             unit.setBehaviour(new HarvestBehaviour(unit, supply));
         } else if (!shouldGiveUp(0)) {
             tracker = new FinderTrackerAlgorithm<>(unit.getUnitGrid(), new SupplyFinder<>(unit, supply_class));

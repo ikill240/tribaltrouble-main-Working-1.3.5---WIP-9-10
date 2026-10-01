@@ -23,6 +23,7 @@ import com.oddlabs.tt.gui.Skin;
 import com.oddlabs.tt.guievent.EnterListener;
 import com.oddlabs.tt.guievent.ItemChosenListener;
 import com.oddlabs.tt.guievent.MouseClickListener;
+import com.oddlabs.tt.net.PlayerSlot; //added by ikill240c
 import com.oddlabs.tt.player.campaign.Campaign;
 import com.oddlabs.tt.player.campaign.CampaignState;
 import com.oddlabs.tt.player.campaign.NativeCampaign;
@@ -58,6 +59,10 @@ public final class NewCampaignForm extends Form implements DeterministicSerializ
     private final @NonNull EditLine editline_name;
     private final @NonNull PulldownMenu<Void> race_pulldown;
     private final @NonNull PulldownMenu<Void> difficulty_pulldown;
+    private final @NonNull PulldownMenu<Void> enemy_ai_pulldown; //added by ikill240c
+    // Enemy AI menu entries, in order: Standard (0 = the islands' own AdvancedAI tiers), then the new AIs. //added by ikill240c
+    private static final int[] ENEMY_AI_CHOICES = {0, PlayerSlot.AI_EXPERT, PlayerSlot.AI_ULTRA, PlayerSlot.AI_FABLE, //added by ikill240c
+            PlayerSlot.AI_GAUNTLET}; //added by ikill240c
     private final @NonNull GUIRoot gui_root;
     private final @NonNull NetworkSelector network;
     private @NonNull CampaignState @Nullable [] campaign_states;
@@ -100,6 +105,18 @@ public final class NewCampaignForm extends Form implements DeterministicSerializ
         group.addChild(difficulty_label);
         group.addChild(difficulty_pb);
 
+        // enemy AI - which AI plays the computer opponents (see CampaignInGameInfo.resolveAIDifficulty()) //added by ikill240c
+        Label enemy_ai_label = new Label(i18n("enemy_ai"), Skin.getSkin().getEditFont()); //added by ikill240c
+        enemy_ai_pulldown = new PulldownMenu<>(); //added by ikill240c
+        enemy_ai_pulldown.addItem(new PulldownItem<>(i18n("enemy_ai_standard"))); //added by ikill240c
+        enemy_ai_pulldown.addItem(new PulldownItem<>(i18n("expert_ai"))); //added by ikill240c
+        enemy_ai_pulldown.addItem(new PulldownItem<>(i18n("ultra_ai"))); //added by ikill240c
+        enemy_ai_pulldown.addItem(new PulldownItem<>(i18n("fable_ai"))); //added by ikill240c
+        enemy_ai_pulldown.addItem(new PulldownItem<>(i18n("gauntlet_ai"))); //added by ikill240c
+        PulldownButton<Void> enemy_ai_pb = new PulldownButton<>(gui_root, enemy_ai_pulldown, 0, 160); //added by ikill240c
+        group.addChild(enemy_ai_label); //added by ikill240c
+        group.addChild(enemy_ai_pb); //added by ikill240c
+
         // place in group
         editline_name.place();
         name_label.place(editline_name, LEFT_MID);
@@ -107,6 +124,8 @@ public final class NewCampaignForm extends Form implements DeterministicSerializ
         race_label.place(race_pb, LEFT_MID);
         difficulty_pb.place(race_pb, BOTTOM_LEFT);
         difficulty_label.place(difficulty_pb, LEFT_MID);
+        enemy_ai_pb.place(difficulty_pb, BOTTOM_LEFT); //added by ikill240c
+        enemy_ai_label.place(enemy_ai_pb, LEFT_MID); //added by ikill240c
         group.compileCanvas();
         addChild(group);
 
@@ -196,6 +215,8 @@ public final class NewCampaignForm extends Form implements DeterministicSerializ
             default -> throw new IllegalArgumentException();
         };
         campaign.getState().setDifficulty(difficulty);
+        campaign.getState().setEnemyAI(ENEMY_AI_CHOICES[Math.clamp(enemy_ai_pulldown.getChosenItemIndex(), 0, //added by ikill240c
+                ENEMY_AI_CHOICES.length - 1)]); //added by ikill240c
         new_states[new_states.length - 1] = campaign.getState();
         LoadCampaignBox.saveSavegames(new_states, this);
         remove();

@@ -8,6 +8,7 @@ import com.oddlabs.tt.gui.HorizButton;
 import com.oddlabs.tt.gui.LabelBox;
 import com.oddlabs.tt.gui.OKButton;
 import com.oddlabs.tt.gui.Skin;
+import com.oddlabs.tt.net.PlayerSlot; //added by ikill240c
 import com.oddlabs.tt.render.Renderer;
 import com.oddlabs.tt.viewer.InGameInfo;
 import com.oddlabs.tt.viewer.WorldViewer;
@@ -21,6 +22,21 @@ final class CampaignInGameInfo implements InGameInfo {
     public CampaignInGameInfo(Campaign campaign) {
         this.campaign = campaign;
     }
+
+    // Islands ask for Easy/Normal/Hard AIs (AdvancedAI) for their real opponents and allies, and special scripted
+    // types (AI_NEUTRAL_CAMPAIGN, AI_PASSIVE_CAMPAIGN) for story characters. With an enemy AI chosen for this
+    // campaign, the Easy/Normal/Hard slots get that AI instead; story characters and the campaign difficulty
+    // setting (unit counts, reinforcements) are untouched. //added by ikill240c
+    @Override //added by ikill240c
+    public int resolveAIDifficulty(int ai_difficulty) { //added by ikill240c
+        int enemy_ai = campaign.getState().getEnemyAI(); //added by ikill240c
+        if (enemy_ai == 0) //added by ikill240c
+            return ai_difficulty; //added by ikill240c
+        return switch (ai_difficulty) { //added by ikill240c
+            case PlayerSlot.AI_EASY, PlayerSlot.AI_NORMAL, PlayerSlot.AI_HARD -> enemy_ai; //added by ikill240c
+            default -> ai_difficulty; //added by ikill240c
+        }; //added by ikill240c
+    } //added by ikill240c
 
     @Override
     public boolean isRated() {

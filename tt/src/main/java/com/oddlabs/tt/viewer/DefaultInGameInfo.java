@@ -201,7 +201,9 @@ public class DefaultInGameInfo implements InGameInfo {
             } else if (player.getAI() instanceof com.oddlabs.tt.player.ultra.UltraAI) { //added by ikill240c
                 fill = RosterTemplate.Fill.ULTRA_AI; //added by ikill240c
             } else if (player.getAI() instanceof com.oddlabs.tt.player.fable.FableAI) { //added by ikill240c
-                fill = RosterTemplate.Fill.FABLE_AI; //added by ikill240c
+                fill = RosterTemplate.Fill.FABLE_AI;
+            } else if (player.getAI() instanceof com.oddlabs.tt.player.gauntlet.GauntletAI) { //added by ikill240c
+                fill = RosterTemplate.Fill.GAUNTLET_AI; //added by ikill240c //added by ikill240c
             } else { //added by ikill240c
                 // Not slot 0 and not AI - either another human (not present in a fresh SP replay
                 // lobby, so treated as an open seat) or some other non-AdvancedAI controller.

@@ -137,6 +137,17 @@ public class Unit extends Selectable<UnitTemplate> implements Occupant, Movable 
     private float stuck_check_x = Float.NaN;//added by ikill240c
     private float stuck_check_y = Float.NaN;//added by ikill240c
     private float stuck_time = 0f;//added by ikill240c
+    // The resource this gatherer last got stuck trying to reach (see GatherController.onStuck()): SupplyFinder skips it
+    // so the peon goes somewhere else instead of straight back. Cleared once it starts harvesting anywhere. //added by ikill240c
+    private @Nullable Supply avoided_supply; //added by ikill240c
+
+    public @Nullable Supply getAvoidedSupply() { //added by ikill240c
+        return avoided_supply; //added by ikill240c
+    } //added by ikill240c
+
+    public void setAvoidedSupply(@Nullable Supply supply) { //added by ikill240c
+        this.avoided_supply = supply; //added by ikill240c
+    } //added by ikill240c
 
     private static final float GATHER_STUCK_DIST_SQ = 4f;//added by ikill240c
     private static final float GATHER_STUCK_SECONDS = 3f;//added by ikill240c
@@ -347,7 +358,11 @@ public class Unit extends Selectable<UnitTemplate> implements Occupant, Movable 
         // looks exactly like "stuck", and the AI still believed the units were on their way, so they stood
         // around until something attacked them. (The gather branch also reassigned their peons to other
         // resources behind the AI's back.) Humans and AdvancedAI keep this check. //added by ikill240c
-        if (getOwner().usesReferenceCommandRules()) { //added by ikill240c
+        // Narrowed: originally skipped everything for these AIs, which also dropped the gatherer part below - a
+        // peon stuck at a crowded resource gets sent to a different one (GatherController.onStuck()), the fix for
+        // gatherers piling up - so the new AIs' peons piled up again. Only the general "cancel a stuck order"
+        // fallback is skipped for them now; their AIs manage their own armies. //added by ikill240c
+        if (getOwner().usesReferenceCommandRules() && !(getPrimaryController() instanceof GatherController<?>)) { //added by ikill240c
             stuck_time = 0f; //added by ikill240c
             stuck_check_x = Float.NaN; //added by ikill240c
             return; //added by ikill240c

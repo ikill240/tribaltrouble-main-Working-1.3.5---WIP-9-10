@@ -22,9 +22,10 @@ public final class PlayerSlot implements Serializable {
     public static final int AI_EXPERT = 9;
     public static final int AI_ULTRA = 10;
     public static final int AI_FABLE = 11;
+    public static final int AI_GAUNTLET = 12; //added by ikill240c - com.oddlabs.tt.player.gauntlet.GauntletAI
 
     /** The AI difficulties offered in lobby menus, in the order the menus list them. */
-    private static final int[] MENU_DIFFICULTIES = {AI_EASY, AI_NORMAL, AI_HARD, AI_EXPERT, AI_ULTRA, AI_FABLE};
+    private static final int[] MENU_DIFFICULTIES = {AI_EASY, AI_NORMAL, AI_HARD, AI_EXPERT, AI_ULTRA, AI_FABLE, AI_GAUNTLET}; //added by ikill240c - Gauntlet appended
 
     /** The AI difficulty at a position (from 0) among the AI entries of a lobby menu. */
     public static int difficultyOfMenuEntry(int entry) {

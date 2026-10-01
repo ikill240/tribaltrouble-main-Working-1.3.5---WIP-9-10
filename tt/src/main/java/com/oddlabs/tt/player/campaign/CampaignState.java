@@ -38,6 +38,10 @@ public final class CampaignState implements Serializable {
     private long date;
     private int race;
     private int difficulty;
+    // Which AI plays the campaign's computer opponents and allies: 0 = Standard (the original AdvancedAI tiers the
+    // islands ask for), otherwise a PlayerSlot.AI_* constant (Expert/Ultra/Fable/Gauntlet). Saves made before
+    // this field existed load it as 0, so existing campaigns play exactly as before. //added by ikill240c
+    private int enemy_ai; //added by ikill240c
 
     public CampaignState(int @NonNull [] initial_states) {
         island_states = new int[initial_states.length];
@@ -163,4 +167,12 @@ public final class CampaignState implements Serializable {
     public int getDifficulty() {
         return difficulty;
     }
+
+    public int getEnemyAI() { //added by ikill240c
+        return enemy_ai; //added by ikill240c
+    } //added by ikill240c
+
+    public void setEnemyAI(int enemy_ai) { //added by ikill240c
+        this.enemy_ai = enemy_ai; //added by ikill240c
+    } //added by ikill240c
 }

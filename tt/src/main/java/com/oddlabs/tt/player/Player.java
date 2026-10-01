@@ -29,6 +29,7 @@ import com.oddlabs.tt.model.weapon.RockAxeWeapon;
 import com.oddlabs.tt.model.weapon.RubberAxeWeapon;
 import com.oddlabs.tt.player.ai.ExpertAI; //added by ikill240c
 import com.oddlabs.tt.player.fable.FableAI; //added by ikill240c
+import com.oddlabs.tt.player.gauntlet.GauntletAI; //added by ikill240c
 import com.oddlabs.tt.player.ultra.UltraAI; //added by ikill240c
 import com.oddlabs.tt.util.Target;
 import org.joml.Vector4fc;
@@ -397,7 +398,7 @@ public final class Player implements PlayerInterface {
     // since each player's AI is fixed at game start. //added by ikill240c
     // Public: also used by Unit.updateStuckCheck() to leave these AIs' units to the AIs themselves. //added by ikill240c
     public boolean usesReferenceCommandRules() { //added by ikill240c
-        return ai instanceof ExpertAI || ai instanceof UltraAI || ai instanceof FableAI; //added by ikill240c
+        return ai instanceof ExpertAI || ai instanceof UltraAI || ai instanceof FableAI || ai instanceof GauntletAI; //added by ikill240c
     } //added by ikill240c
 
     public @Nullable Building buildBuilding(int building_type, int grid_x, int grid_y) {

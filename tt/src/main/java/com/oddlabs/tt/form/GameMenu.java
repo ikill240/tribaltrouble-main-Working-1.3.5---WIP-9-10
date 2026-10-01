@@ -74,6 +74,7 @@ public final class GameMenu extends Panel implements ConfigurationListener, Chat
     private static final int COMPUTER_EXPERT_INDEX = 5;
     private static final int COMPUTER_ULTRA_INDEX = 6;
     private static final int COMPUTER_FABLE_INDEX = 7;
+    private static final int COMPUTER_GAUNTLET_INDEX = 8; //added by ikill240c
 
     private static final int SEND_BUTTON_WIDTH = 60;
 
@@ -218,6 +219,7 @@ public final class GameMenu extends Panel implements ConfigurationListener, Chat
                 case EXPERT_AI -> applyAi(server, i, race, team, PlayerSlot.AI_EXPERT);
                 case ULTRA_AI -> applyAi(server, i, race, team, PlayerSlot.AI_ULTRA);
                 case FABLE_AI -> applyAi(server, i, race, team, PlayerSlot.AI_FABLE);
+                case GAUNTLET_AI -> applyAi(server, i, race, team, PlayerSlot.AI_GAUNTLET); //added by ikill240c
             }
         }
     }
@@ -268,6 +270,7 @@ public final class GameMenu extends Panel implements ConfigurationListener, Chat
             case COMPUTER_EXPERT_INDEX:
             case COMPUTER_ULTRA_INDEX:
             case COMPUTER_FABLE_INDEX:
+            case COMPUTER_GAUNTLET_INDEX: //added by ikill240c
                 assert !rated;
                 boolean new_ai = player.getType() != PlayerSlot.AI;
                 if (new_ai || race_changed || team_changed || difficulty_changed) {
@@ -425,6 +428,7 @@ public final class GameMenu extends Panel implements ConfigurationListener, Chat
         PulldownItem<Void> computer_expert_item = new PulldownItem<>(i18n("expert_ai"));
         PulldownItem<Void> computer_ultra_item = new PulldownItem<>(i18n("ultra_ai"));
         PulldownItem<Void> computer_fable_item = new PulldownItem<>(i18n("fable_ai"));
+        PulldownItem<Void> computer_gauntlet_item = new PulldownItem<>(i18n("gauntlet_ai")); //added by ikill240c
         pulldown_menu.addItem(open_item);
         pulldown_menu.addItem(closed_item);
         if (!rated) {
@@ -434,6 +438,7 @@ public final class GameMenu extends Panel implements ConfigurationListener, Chat
             pulldown_menu.addItem(computer_expert_item);
             pulldown_menu.addItem(computer_ultra_item);
             pulldown_menu.addItem(computer_fable_item);
+            pulldown_menu.addItem(computer_gauntlet_item); //added by ikill240c
         }
         PulldownButton<?> pulldown_button = new PulldownButton<>(gui_root, pulldown_menu, CLOSED_INDEX, 150);
         slot_buttons[index] = pulldown_button;
